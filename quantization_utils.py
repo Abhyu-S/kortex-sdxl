@@ -1,5 +1,4 @@
 import torch
-# FIXED IMPORT: Pointing to the specific submodule
 from diffusers.quantizers.quantization_config import BitsAndBytesConfig
 
 def get_quantization_config():

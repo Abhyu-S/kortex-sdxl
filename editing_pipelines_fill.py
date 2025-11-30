@@ -111,7 +111,7 @@ class EditingPipelines:
         # 4. PRUNING: Reduced ratio for better quality
         # 0.2 means removing 20% of tokens (vs 40% before). 
         # This keeps more texture details while still giving a small speedup.
-        apply_token_pruning(self.inpaint_pipe, ratio=0.15)
+        apply_token_pruning(self.inpaint_pipe, ratio=0.4)
 
         # 5. Assemble Img2Img Pipeline
         print("... Assembling Img2Img Pipeline")
@@ -184,13 +184,13 @@ class EditingPipelines:
             image=work_image,
             mask_image=work_mask,
             control_image=work_image,
-            num_inference_steps=10,  
+            num_inference_steps=30,  
             guidance_scale=7.5,
             strength=1.0,
             controlnet_conditioning_scale=0.5
         ).images[0]
         
-        self._log_metrics(t0, steps=10, step_name="Generative Fill")
+        self._log_metrics(t0, steps=30, step_name="Generative Fill")
         
         # --- Step 2: Vibe Match ---
         if vibe_strength < 0:
@@ -199,7 +199,7 @@ class EditingPipelines:
             t0 = time.time()
             
             # Ensure at least 10 steps so low strength doesn't result in 0 steps
-            safe_steps = max(10, int(1.0 / vibe_strength) + 1)
+            safe_steps = max(30, int(1.0 / vibe_strength) + 1)
             
             filled_image = self.img2img_pipe(
                 prompt=f"{prompt}, consistent lighting, 8k, photorealistic",
@@ -219,7 +219,7 @@ class EditingPipelines:
     def run_harmonize_sticker(self, image: Image.Image, mask: Image.Image) -> Image.Image:
         print("-> Running Edge-Only Harmonization")
         
-        border_width = 21
+        border_width = 41
         mask_dilated = mask.filter(ImageFilter.MaxFilter(border_width))
         bbox = mask_dilated.getbbox() 
         if not bbox: return image
@@ -246,13 +246,13 @@ class EditingPipelines:
             image=work_image,
             mask_image=work_mask,
             control_image=work_image,
-            num_inference_steps=10, # Increased steps
+            num_inference_steps=30,
             guidance_scale=2.5,
             strength=0.75, 
             controlnet_conditioning_scale=0.4
         ).images[0]
         
-        self._log_metrics(t0, steps=8, step_name="Harmonization") # 10 * 0.75 ≈ 8 steps
+        self._log_metrics(t0, steps=30, step_name="Harmonization") # 10 * 0.75 ≈ 8 steps
         
         output_crop = output_crop.resize(original_crop_size, Image.Resampling.LANCZOS)
         final_image = image.copy()
