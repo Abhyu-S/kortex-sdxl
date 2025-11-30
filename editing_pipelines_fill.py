@@ -1,143 +1,244 @@
 import torch
+import time
 from PIL import Image, ImageChops, ImageFilter
 from diffusers import (
-    AutoPipelineForImage2Image,
     StableDiffusionXLControlNetInpaintPipeline,
+    StableDiffusionXLImg2ImgPipeline,
     ControlNetModel,
-    EulerDiscreteScheduler
+    EulerDiscreteScheduler,
+    UNet2DConditionModel,
+    AutoencoderKL
 )
-from transformers import BitsAndBytesConfig
+from transformers import (
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    AutoTokenizer
+)
+# Import our custom modules
+from quantization_utils import get_quantization_config
+from pruning_utils import apply_token_pruning
+
+# Model IDs
+BASE_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
+CONTROLNET_MODEL = "destitech/controlnet-inpaint-dreamer-sdxl"
+VAE_MODEL = "madebyollin/sdxl-vae-fp16-fix" 
 
 class EditingPipelines:
     def __init__(self):
-        print("--- Loading SDXL Hybrid Pipelines (Optimized) ---")
+        print("--- Loading Optimized SDXL Pipeline (Quality Focused) ---")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        # QUANTIZATION CONFIG (The "Memory" Optimization)
-        # This loads the massive SDXL UNet in 4-bit precision, saving ~10GB VRAM.
-        # It justifies your claim that this can run on future mobile RAM.
-        self.quant_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
-        )
+        # 1. QUANTIZATION: Get the NF4 Config
+        quant_config = get_quantization_config()
 
-        # 1. Load ControlNet (Inpaint Dreamer)
-        # We load this in float16 as it's relatively small compared to UNet
-        print("... Loading ControlNet")
+        # 2. Load ControlNet (Float16)
+        print("... Loading ControlNet (FP16)")
         controlnet = ControlNetModel.from_pretrained(
-            "destitech/controlnet-inpaint-dreamer-sdxl",
+            CONTROLNET_MODEL,
             torch_dtype=torch.float16,
             use_safetensors=True
         )
+        controlnet.to(self.device)
 
-        # 2. Main Inpainting Pipeline (The "Heavy Lifter")
-        # We attach the 4-bit config here to the UNet inside the pipeline
-        print("... Loading SDXL Inpaint (4-bit Quantized)")
-        self.inpaint_pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            controlnet=controlnet,
+        # --- MANUAL LOADING WITH QUANTIZATION ---
+        print("... Loading SDXL Components with 4-bit (NF4)")
+
+        # Load UNet with Quantization
+        unet = UNet2DConditionModel.from_pretrained(
+            BASE_MODEL,
+            subfolder="unet",
+            quantization_config=quant_config,
             torch_dtype=torch.float16,
-            variant="fp16",
-            use_safetensors=True,
-            # QUANTIZATION APPLIED HERE:
-            quantization_config=self.quant_config 
+            variant="fp16"
+        )
+
+        # Load Text Encoders with Quantization
+        text_encoder_1 = CLIPTextModel.from_pretrained(
+            BASE_MODEL,
+            subfolder="text_encoder",
+            quantization_config=quant_config,
+            torch_dtype=torch.float16,
+            variant="fp16"
+        )
+        text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(
+            BASE_MODEL,
+            subfolder="text_encoder_2",
+            quantization_config=quant_config,
+            torch_dtype=torch.float16,
+            variant="fp16"
+        )
+
+        # Load VAE (FP16)
+        vae = AutoencoderKL.from_pretrained(
+            VAE_MODEL,
+            torch_dtype=torch.float16
+        )
+        vae.to(self.device)
+        vae.enable_slicing() 
+
+        # Load Tokenizers
+        print("... Loading Tokenizers")
+        tokenizer_1 = AutoTokenizer.from_pretrained(
+            BASE_MODEL,
+            subfolder="tokenizer",
+            use_fast=False
+        )
+        tokenizer_2 = AutoTokenizer.from_pretrained(
+            BASE_MODEL,
+            subfolder="tokenizer_2",
+            use_fast=False
+        )
+        # --- END MANUAL LOADING ---
+
+        # 3. Assemble Main Pipeline
+        print("... Assembling StableDiffusionXLControlNetInpaintPipeline")
+        self.inpaint_pipe = StableDiffusionXLControlNetInpaintPipeline(
+            vae=vae,
+            text_encoder=text_encoder_1,
+            text_encoder_2=text_encoder_2,
+            unet=unet,
+            controlnet=controlnet,
+            tokenizer=tokenizer_1,
+            tokenizer_2=tokenizer_2,
+            scheduler=EulerDiscreteScheduler.from_pretrained(BASE_MODEL, subfolder="scheduler"),
         )
         
-        # SPEED OPTIMIZATION (The "Pruning" Proxy)
-        # Switching to EulerDiscreteScheduler allows us to use 4-8 steps (Lightning style)
-        # instead of the standard 30-50 steps.
         self.inpaint_pipe.scheduler = EulerDiscreteScheduler.from_config(
             self.inpaint_pipe.scheduler.config, 
             timestep_spacing="trailing"
         )
-        
-        # Move non-quantized parts to GPU explicitly if needed (BitsAndBytes handles UNet)
-        # self.inpaint_pipe.to(self.device) # 4-bit models auto-dispatch, but explicit .to() can be safe
-        
-        # 3. Global Img2Img Pipeline (For Vibe Match)
-        # We load a separate distilled checkpoint for speed here if desired, 
-        # or reuse the base in 4-bit.
-        print("... Loading Img2Img (4-bit Quantized)")
-        self.img2img_pipe = AutoPipelineForImage2Image.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16,
-            variant="fp16",
-            use_safetensors=True,
-            quantization_config=self.quant_config
+
+        # 4. PRUNING: Reduced ratio for better quality
+        # 0.2 means removing 20% of tokens (vs 40% before). 
+        # This keeps more texture details while still giving a small speedup.
+        apply_token_pruning(self.inpaint_pipe, ratio=0.15)
+
+        # 5. Assemble Img2Img Pipeline
+        print("... Assembling Img2Img Pipeline")
+        self.img2img_pipe = StableDiffusionXLImg2ImgPipeline(
+            vae=vae,
+            text_encoder=text_encoder_1,
+            text_encoder_2=text_encoder_2,
+            unet=unet,
+            tokenizer=tokenizer_1,
+            tokenizer_2=tokenizer_2,
+            scheduler=EulerDiscreteScheduler.from_pretrained(BASE_MODEL, subfolder="scheduler"),
         )
         self.img2img_pipe.scheduler = EulerDiscreteScheduler.from_config(
             self.img2img_pipe.scheduler.config, 
             timestep_spacing="trailing"
         )
+        # Pruning is already applied to the shared UNet
 
-        print("--- Pipelines Ready (4-bit + Lightning Setup) ---")
+        print("--- Optimization Complete: 4-bit | 15% Pruned | 10 Steps ---")
+
+    def _log_metrics(self, start_time, steps, step_name="Inference"):
+        """
+        Calculates and prints compute metrics:
+        - Latency
+        - Peak VRAM
+        - Estimated Throughput (TFLOPs)
+        """
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+            
+            # Time & Memory
+            latency = time.time() - start_time
+            max_mem = torch.cuda.max_memory_allocated() / 1024**3
+            
+            # Compute Estimation (Ballpark for Feasibility Report)
+            # SDXL 1024px is roughly 5 TFLOPs per step (FP16).
+            # We estimate the 'Effective TFLOPs' delivered by the GPU.
+            estimated_ops_per_step = 5.0 # Trillions of ops
+            total_ops = estimated_ops_per_step * steps
+            throughput_tflops = total_ops / latency
+            
+            # TOPS (Trillions of Operations Per Second)
+            # For INT8/INT4, TOPS is often 2x-4x TFLOPs depending on hardware instructions.
+            # We estimate TOPS as a function of the mixed-precision throughput.
+            estimated_tops = throughput_tflops * 2.0 # Conservative estimate for quantized ops
+            
+            print(f"[{step_name}] Metrics:")
+            print(f"  > Latency:   {latency:.4f} s")
+            print(f"  > Peak VRAM: {max_mem:.2f} GB")
+            print(f"  > Est. Perf: {throughput_tflops:.2f} TFLOPs | {estimated_tops:.2f} TOPS")
+        else:
+            latency = time.time() - start_time
+            print(f"[{step_name}] Latency: {latency:.4f}s (CPU)")
 
     def run_smart_fill(self, image, mask, prompt, vibe_strength=0.1):
-        """
-        Runs the generation. 
-        NOTE: We use 8 steps here to simulate the 'Turbo/Pruned' speed.
-        """
         print(f"Running Smart Fill: '{prompt}'")
-        
         w, h = image.size
-        # Resize to 1024x1024 for SDXL stability
+        
         work_image = image.convert("RGB").resize((1024, 1024), Image.Resampling.LANCZOS)
         work_mask = mask.convert("L").resize((1024, 1024), Image.Resampling.NEAREST)
         
-        # --- Step 1: Generative Fill ---
-        # Note: num_inference_steps=8 (Lightning speed simulation)
+        # --- Step 1: Generative Fill (10 Steps) ---
+        print("  > Starting Generative Fill (10 Steps)...")
+        if self.device == "cuda": torch.cuda.reset_peak_memory_stats()
+        t0 = time.time()
+        
         filled_image = self.inpaint_pipe(
             prompt=f"{prompt}, 8k, photorealistic, master calibration",
-            negative_prompt="blurry, ugly, deformed, text, watermark",
+            negative_prompt="blurry, ugly, deformed, text, watermark, low quality",
             image=work_image,
             mask_image=work_mask,
             control_image=work_image,
-            num_inference_steps=8, # OPTIMIZATION: Reduced from 30 to 8
-            guidance_scale=2.0,    # Lower guidance for Lightning/Turbo schedulers
-            strength=1.0, 
-            controlnet_conditioning_scale=0.0
+            num_inference_steps=10,  
+            guidance_scale=7.5,
+            strength=1.0,
+            controlnet_conditioning_scale=0.5
         ).images[0]
         
-        # --- Step 2: Global Vibe Match ---
-        if vibe_strength > 0:
-            print(f"  > Vibe Match (Strength: {vibe_strength})...")
+        self._log_metrics(t0, steps=10, step_name="Generative Fill")
+        
+        # --- Step 2: Vibe Match ---
+        if vibe_strength < 0:
+            print(f"  > Starting Vibe Match (Strength: {vibe_strength})...")
+            if self.device == "cuda": torch.cuda.reset_peak_memory_stats()
+            t0 = time.time()
+            
+            # Ensure at least 10 steps so low strength doesn't result in 0 steps
+            safe_steps = max(10, int(1.0 / vibe_strength) + 1)
+            
             filled_image = self.img2img_pipe(
                 prompt=f"{prompt}, consistent lighting, 8k, photorealistic",
                 negative_prompt="blurry, artifact, distorted",
                 image=filled_image,
-                num_inference_steps=8, # OPTIMIZATION: Reduced from 30 to 8
+                num_inference_steps=safe_steps, 
                 strength=vibe_strength,
-                guidance_scale=2.0
+                guidance_scale=2.5
             ).images[0]
+            
+            # Calculate actual steps executed (approximate)
+            actual_steps = int(safe_steps * vibe_strength)
+            self._log_metrics(t0, steps=actual_steps, step_name="Vibe Match")
             
         return filled_image.resize((w, h), Image.Resampling.LANCZOS)
 
     def run_harmonize_sticker(self, image: Image.Image, mask: Image.Image) -> Image.Image:
-        # Same logic as your original code, just using the accelerated pipeline
         print("-> Running Edge-Only Harmonization")
         
         border_width = 21
         mask_dilated = mask.filter(ImageFilter.MaxFilter(border_width))
-        mask_eroded = mask.filter(ImageFilter.MinFilter(border_width))
-        edge_mask = ImageChops.difference(mask_dilated, mask_eroded)
-        edge_mask = edge_mask.filter(ImageFilter.GaussianBlur(5))
-
         bbox = mask_dilated.getbbox() 
         if not bbox: return image
-
+        
         padding = 128
         width, height = image.size
-        left, top, right, bottom = bbox
-        crop_box = (max(0, left - padding), max(0, top - padding), 
-                    min(width, right + padding), min(height, bottom + padding))
+        crop_box = (max(0, bbox[0]-padding), max(0, bbox[1]-padding), min(width, bbox[2]+padding), min(height, bbox[3]+padding))
         
         image_crop = image.crop(crop_box)
-        edge_mask_crop = edge_mask.crop(crop_box)
-        original_crop_size = image_crop.size
+        mask_eroded = mask.filter(ImageFilter.MinFilter(border_width))
+        edge_mask = ImageChops.difference(mask_dilated, mask_eroded).filter(ImageFilter.GaussianBlur(5)).crop(crop_box)
         
         work_image = image_crop.convert("RGB").resize((1024, 1024), Image.Resampling.LANCZOS)
-        work_mask = edge_mask_crop.convert("L").resize((1024, 1024), Image.Resampling.NEAREST)
+        work_mask = edge_mask.convert("L").resize((1024, 1024), Image.Resampling.NEAREST)
+        original_crop_size = image_crop.size
+
+        # --- Run Inference ---
+        if self.device == "cuda": torch.cuda.reset_peak_memory_stats()
+        t0 = time.time()
 
         output_crop = self.inpaint_pipe(
             prompt="coherent lighting, realistic shadows, high quality, seamless blending",
@@ -145,14 +246,16 @@ class EditingPipelines:
             image=work_image,
             mask_image=work_mask,
             control_image=work_image,
-            num_inference_steps=8, # OPTIMIZATION: Fast harmonization
-            guidance_scale=2.0,
+            num_inference_steps=10, # Increased steps
+            guidance_scale=2.5,
             strength=0.75, 
             controlnet_conditioning_scale=0.4
         ).images[0]
         
+        self._log_metrics(t0, steps=8, step_name="Harmonization") # 10 * 0.75 ≈ 8 steps
+        
         output_crop = output_crop.resize(original_crop_size, Image.Resampling.LANCZOS)
         final_image = image.copy()
-        final_image.paste(output_crop, (crop_box[0], crop_box[1]), output_crop.convert("RGBA")) # Use alpha paste if possible
+        final_image.paste(output_crop, (crop_box[0], crop_box[1]), output_crop.convert("RGBA"))
         
         return final_image

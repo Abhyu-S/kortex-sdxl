@@ -21,6 +21,11 @@ def image_to_bytes(image):
     image.save(img_byte_arr, format='PNG')
     return img_byte_arr.getvalue()
 
+# --- ADDED: Root Endpoint to fix 404 Error ---
+@app.get("/")
+def read_root():
+    return {"message": "GenAI Server is Running! Go to /docs for API UI."}
+
 @app.get("/health")
 def health_check():
     return {"status": "running", "gpu": torch.cuda.is_available()}
@@ -89,4 +94,5 @@ async def smart_fill(
     return Response(content=image_to_bytes(result), media_type="image/png")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Ensure this matches the port you exposed in Lightning Studio
+    uvicorn.run(app, host="0.0.0.0", port=8080)
