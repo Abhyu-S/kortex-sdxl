@@ -1,5 +1,5 @@
 ## Summary
-Kortex-SDXL is a production-ready image editing service built on Stable Diffusion XL (SDXL) with ControlNet for inpainting. It provides two primary capabilities: (1) text-guided Generative Fill to synthesize content within a mask while preserving structure, and (2) edge-aware Harmonization to blend pasted or moved objects into a scene. The system assembles SDXL components with an fp16 VAE and applies aggressive—but quality-preserving—optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then optionally performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar) but supports CPU fallback with significantly higher latency.
+Production-ready image editing system built on Stable Diffusion XL (SDXL) with ControlNet for inpainting. It provides two primary capabilities: (1) text-guided Generative Fill to synthesize content within a mask while preserving structure, and (2) edge-aware Harmonization to blend pasted or moved objects into a scene. The system assembles SDXL components with an fp16 VAE and applies aggressive—but quality-preserving—optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then optionally performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource monitoring and performance telemetry captured with optional to Weights & Biases. Optimized for 16GB-class GPUs (Tesla T4).
 
 ## Table of Contents
 - [Overview](#overview)
@@ -22,19 +22,21 @@ Kortex-SDXL is a production-ready image editing service built on Stable Diffusio
 - [References & Citations](#references--citations)
 - [Appendix: Prompts, Workflows, Examples](#appendix-prompts-workflows-examples)
 
-# Kortex-SDXL Documentation
+# Stable Diffusion XL (SDXL) Image Editing System
+## Technical Documentation
 
-This document provides a comprehensive guide to the repository.
+Text-guided Generative Fill and edge-aware Harmonization for professional image editing.
 
 ---
 
 ## Overview
-- Purpose: High-quality image editing with Stable Diffusion XL (SDXL) featuring text-guided Generative Fill and edge-aware Harmonization for pasted/moved objects.
-- Strengths:
-	- 4-bit NF4 quantization + Token Merging (ToMe) for low VRAM and faster inference.
-	- Two-pass Smart Fill: Fill → optional Vibe Match for lighting/style alignment.
-	- Simple, reliable FastAPI endpoints; built-in telemetry via Weights & Biases (optional).
-- Target hardware: 16GB-class GPUs (e.g., Tesla T4); supports CPU fallback with reduced performance.
+**Purpose**: High-quality image editing with Stable Diffusion XL (SDXL) featuring text-guided Generative Fill and edge-aware Harmonization for pasted/moved objects.
+
+**Key Features**:
+- 4-bit NF4 quantization + Token Merging (ToMe) for optimized VRAM usage
+- Two-pass Smart Fill: Inpainting → optional Vibe Match for lighting/style alignment  
+- FastAPI RESTful endpoints with built-in telemetry
+- Target hardware: 16GB-class GPUs (Tesla T4); CPU fallback supported
 
 ### The 2030 Compute Proxy: Why Tesla T4?
 To address the challenge's requirement for a lightweight, mobile-first editor, we utilized the NVIDIA Tesla T4 as a hardware proxy for the estimated compute capability of a flagship mobile NPU in 2030.
@@ -81,18 +83,24 @@ flowchart LR
 ```mermaid
 flowchart TB
 	subgraph Pipelines
-		U[UNet (NF4/fp16)]
-		T1[TextEncoder1 (NF4/fp16)]
-		T2[TextEncoder2 (NF4/fp16)]
-		V[VAE (fp16)]
-		Cn[ControlNet (fp16)]
-		Sch[Scheduler]
+		U[UNet NF4]:::unet
+		T1[TextEncoder1 NF4]:::encoder
+		T2[TextEncoder2 NF4]:::encoder
+		V[VAE fp16]:::vae
+		Cn[ControlNet fp16]:::control
+		Sch[Scheduler]:::scheduler
 	end
 	T1 --> U
 	T2 --> U
 	Cn --> U
 	U --> V
 	Sch --> U
+	
+	classDef unet fill:#fce4ec,stroke:#880e4f,stroke-width:3px
+	classDef encoder fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+	classDef vae fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+	classDef control fill:#fff3e0,stroke:#e65100,stroke-width:2px
+	classDef scheduler fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
 ```
 
 ```mermaid
@@ -111,31 +119,44 @@ The UNet is the core denoising engine. It processes latent representations throu
 
 ```mermaid
 flowchart TD
-	subgraph UNet Architecture
-		Input[Noisy Latent z_t<br/>4×128×128] --> Down1[DownBlock 1<br/>Conv + ResNet]
-		Down1 --> Attn1[Self-Attention<br/>+ Cross-Attention<br/>with Text Embeddings]
-		Attn1 -->|ToMe merges tokens| Down2[DownBlock 2<br/>Conv + ResNet]
-		Down2 --> Attn2[Self-Attention<br/>+ Cross-Attention]
-		Attn2 --> Down3[DownBlock 3<br/>Bottleneck]
+	subgraph UNet["UNet Architecture"]
+		Input[Noisy Latent<br/>4x128x128]:::input --> Down1[DownBlock 1<br/>Conv + ResNet]:::down
+		Down1 --> Attn1[Self-Attention +<br/>Cross-Attention]:::attn
+		Attn1 -->|ToMe merges tokens| Down2[DownBlock 2<br/>Conv + ResNet]:::down
+		Down2 --> Attn2[Self-Attention +<br/>Cross-Attention]:::attn
+		Attn2 --> Down3[DownBlock 3<br/>Bottleneck]:::down
 		
-		Down3 --> Mid[MidBlock<br/>ResNet + Attention]
+		Down3 --> Mid[MidBlock<br/>ResNet + Attention]:::mid
 		
-		Mid --> Up3[UpBlock 3<br/>TransposeConv]
+		Mid --> Up3[UpBlock 3<br/>TransposeConv]:::up
 		Down2 -.skip.-> Up3
-		Up3 --> Attn3[Self-Attention<br/>+ Cross-Attention]
-		Attn3 --> Up2[UpBlock 2<br/>TransposeConv]
+		Up3 --> Attn3[Self-Attention +<br/>Cross-Attention]:::attn
+		Attn3 --> Up2[UpBlock 2<br/>TransposeConv]:::up
 		Down1 -.skip.-> Up2
-		Up2 --> Attn4[Self-Attention<br/>+ Cross-Attention]
-		Attn4 --> Up1[UpBlock 1<br/>Output Conv]
+		Up2 --> Attn4[Self-Attention +<br/>Cross-Attention]:::attn
+		Attn4 --> Up1[UpBlock 1<br/>Output Conv]:::up
 		
-		Up1 --> Output[Denoised Latent z_{t-1}<br/>4×128×128]
+		Up1 --> Output[Denoised Latent<br/>4x128x128]:::output
 	end
 	
-	Prompt[Text Prompt] --> TE1[Text Encoder 1<br/>CLIP ViT-L/14<br/>NF4 Quantized]
-	Prompt --> TE2[Text Encoder 2<br/>CLIP ViT-bigG/14<br/>NF4 Quantized]
-	TE1 --> Concat[Concatenate<br/>Embeddings]
+	Prompt[Text Prompt]:::prompt --> TE1[Text Encoder 1<br/>CLIP ViT-L NF4]:::encoder
+	Prompt --> TE2[Text Encoder 2<br/>CLIP ViT-bigG NF4]:::encoder
+	TE1 --> Concat[Concatenate<br/>Embeddings]:::concat
 	TE2 --> Concat
-	Concat -.cross-attention.-> Attn1 & Attn2 & Attn3 & Attn4
+	Concat -.cross-attention.-> Attn1
+	Concat -.cross-attention.-> Attn2
+	Concat -.cross-attention.-> Attn3
+	Concat -.cross-attention.-> Attn4
+	
+	classDef input fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+	classDef down fill:#ffebee,stroke:#c62828,stroke-width:2px
+	classDef attn fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+	classDef mid fill:#fff3e0,stroke:#e65100,stroke-width:3px
+	classDef up fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+	classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+	classDef prompt fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+	classDef encoder fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+	classDef concat fill:#fce4ec,stroke:#880e4f,stroke-width:2px
 ```
 
 **Key Components**:
@@ -146,9 +167,7 @@ flowchart TD
 - **ToMe Application**: Applied at attention layers, merging similar tokens to reduce compute
 - **Skip Connections**: Preserve high-frequency details from encoder to decoder
 
-### SDXL Dual Text Encoder System
-
-SDXL uses two CLIP text encoders simultaneously for richer semantic understanding.
+### SDXL Dual Text Encoder Architecture
 
 ```mermaid
 flowchart TB
@@ -157,35 +176,49 @@ flowchart TB
 		Prompt --> Tok2[Tokenizer 2<br/>CLIP ViT-bigG vocab]
 	end
 	
-	subgraph CLIP ViT-L/14 Encoder 1
-		Tok1 --> Emb1[Token Embeddings<br/>77×768]
-		Emb1 --> Pos1[+ Position Embeddings]
-		Pos1 --> Trans1[Transformer Blocks<br/>12 layers]
-		Trans1 --> Pool1[Pooled Output<br/>768-d]
-		Trans1 --> Seq1[Sequence Output<br/>77×768]
+	subgraph CLIP1["CLIP ViT-L Encoder 1"]
+		Tok1 --> Emb1[Token Embeddings<br/>77x768]:::embed
+		Emb1 --> Pos1[Add Position<br/>Embeddings]:::pos
+		Pos1 --> Trans1[Transformer Blocks<br/>12 layers]:::trans
+		Trans1 --> Pool1[Pooled Output<br/>768-d]:::pool
+		Trans1 --> Seq1[Sequence Output<br/>77x768]:::seq
 	end
 	
-	subgraph CLIP ViT-bigG/14 Encoder 2
-		Tok2 --> Emb2[Token Embeddings<br/>77×1280]
-		Emb2 --> Pos2[+ Position Embeddings]
-		Pos2 --> Trans2[Transformer Blocks<br/>24 layers, deeper]
-		Trans2 --> Pool2[Pooled Output<br/>1280-d]
-		Trans2 --> Seq2[Sequence Output<br/>77×1280]
+	subgraph CLIP2["CLIP ViT-bigG Encoder 2"]
+		Tok2 --> Emb2[Token Embeddings<br/>77x1280]:::embed
+		Emb2 --> Pos2[Add Position<br/>Embeddings]:::pos
+		Pos2 --> Trans2[Transformer Blocks<br/>24 layers deeper]:::trans
+		Trans2 --> Pool2[Pooled Output<br/>1280-d]:::pool
+		Trans2 --> Seq2[Sequence Output<br/>77x1280]:::seq
 	end
 	
-	subgraph Embedding Fusion
-		Seq1 --> Concat[Concatenate<br/>along embedding dim]
+	subgraph Fusion["Embedding Fusion"]
+		Seq1 --> Concat[Concatenate<br/>along embedding dim]:::concat
 		Seq2 --> Concat
-		Concat --> FinalEmb["Combined Embeddings<br/>77×2048"]
+		Concat --> FinalEmb[Combined Embeddings<br/>77x2048]:::final
 		
-		Pool1 --> PoolConcat[Concatenate Pooled]
+		Pool1 --> PoolConcat[Concatenate Pooled]:::poolConcat
 		Pool2 --> PoolConcat
-		PoolConcat --> AddTime["+ Time Embedding<br/>+ Resolution Conditioning"]
-		AddTime --> CondVec[Conditioning Vector]
+		PoolConcat --> AddTime[Add Time Embedding<br/>and Resolution Info]:::addTime
+		AddTime --> CondVec[Conditioning Vector]:::condVec
 	end
 	
-	FinalEmb -.cross-attention.-> UNet[UNet Cross-Attention Layers]
+	FinalEmb -.cross-attention.-> UNet[UNet Cross-Attention Layers]:::unet
 	CondVec -.add to.-> UNet
+	
+	classDef input fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+	classDef tokenizer fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+	classDef embed fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+	classDef pos fill:#fff3e0,stroke:#e65100,stroke-width:2px
+	classDef trans fill:#fce4ec,stroke:#880e4f,stroke-width:3px
+	classDef pool fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+	classDef seq fill:#ede7f6,stroke:#5e35b1,stroke-width:2px
+	classDef concat fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+	classDef final fill:#ffccbc,stroke:#d84315,stroke-width:3px
+	classDef poolConcat fill:#c8e6c9,stroke:#1b5e20,stroke-width:2px
+	classDef addTime fill:#ffecb3,stroke:#ffa000,stroke-width:2px
+	classDef condVec fill:#f48fb1,stroke:#ad1457,stroke-width:3px
+	classDef unet fill:#ce93d8,stroke:#7b1fa2,stroke-width:3px
 ```
 
 **Why Dual Encoders?**
@@ -227,31 +260,37 @@ ControlNet is a parallel network that processes the control image (original + ma
 
 ```mermaid
 flowchart TB
-	subgraph ControlNet Pipeline
-		CI[Control Image<br/>RGB 1024×1024] --> Enc[ControlNet Encoder<br/>Trainable Copy of UNet Encoder]
-		Mask[Binary Mask<br/>1024×1024] --> Enc
+	subgraph ControlNet["ControlNet Pipeline"]
+		CI[Control Image<br/>RGB 1024x1024]:::ctrlImg --> Enc[ControlNet Encoder<br/>Copy of UNet Encoder]:::encoder
+		Mask[Binary Mask<br/>1024x1024]:::mask --> Enc
 		
-		Enc --> F1[Feature Map 1<br/>64×64]
-		Enc --> F2[Feature Map 2<br/>32×32]
-		Enc --> F3[Feature Map 3<br/>16×16]
+		Enc --> F1[Feature Map 1<br/>64x64]:::feature
+		Enc --> F2[Feature Map 2<br/>32x32]:::feature
+		Enc --> F3[Feature Map 3<br/>16x16]:::feature
 		
-		F1 --> Scale1[Scale by<br/>conditioning_scale=0.5]
-		F2 --> Scale2[Scale by<br/>conditioning_scale=0.5]
-		F3 --> Scale3[Scale by<br/>conditioning_scale=0.5]
-		end
+		F1 --> Scale1[Scale by<br/>conditioning scale 0.5]:::scale
+		F2 --> Scale2[Scale by<br/>conditioning scale 0.5]:::scale
+		F3 --> Scale3[Scale by<br/>conditioning scale 0.5]:::scale
+	end
 	
-	subgraph UNet Decoder
-		UD1[UNet Down 1] --> UA1[UNet Attn 1]
-		UD2[UNet Down 2] --> UA2[UNet Attn 2]
-		UD3[UNet Down 3] --> UA3[UNet Attn 3]
+	subgraph UNetDec["UNet Decoder"]
+		UD1[UNet Down 1]:::unetDown --> UA1[UNet Attn 1]:::unetAttn
+		UD2[UNet Down 2]:::unetDown --> UA2[UNet Attn 2]:::unetAttn
+		UD3[UNet Down 3]:::unetDown --> UA3[UNet Attn 3]:::unetAttn
 	end
 	
 	Scale1 -.add residual.-> UA1
 	Scale2 -.add residual.-> UA2
 	Scale3 -.add residual.-> UA3
-```
-
-**How It Works**:
+	
+	classDef ctrlImg fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+	classDef mask fill:#fff3e0,stroke:#e65100,stroke-width:2px
+	classDef encoder fill:#f3e5f5,stroke:#6a1b9a,stroke-width:3px
+	classDef feature fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+	classDef scale fill:#fff9c4,stroke:#f57f17,stroke-width:3px
+	classDef unetDown fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+	classDef unetAttn fill:#ce93d8,stroke:#7b1fa2,stroke-width:2px
+```**How It Works**:
 1. ControlNet encoder processes original image + mask to extract structural features
 2. Features are scaled by `controlnet_conditioning_scale` (0.5 in our implementation)
 3. Scaled features are added as residuals to UNet decoder layers
@@ -327,25 +366,33 @@ The VAE (Variational Autoencoder) compresses images into a compact latent repres
 
 ```mermaid
 flowchart LR
-	subgraph VAE Encoder
-		Img[RGB Image<br/>3×1024×1024] --> C1[Conv Block 1<br/>64 channels]
-		C1 --> C2[Conv Block 2<br/>128 channels]
-		C2 --> C3[Conv Block 3<br/>256 channels]
-		C3 --> C4[Conv Block 4<br/>512 channels]
-		C4 --> Quant[Quantization<br/>KL divergence]
-		Quant --> Latent[Latent z<br/>4×128×128]
+	subgraph Encoder["VAE Encoder"]
+		Img[RGB Image<br/>3x1024x1024]:::input --> C1[Conv Block 1<br/>64 channels]:::conv
+		C1 --> C2[Conv Block 2<br/>128 channels]:::conv
+		C2 --> C3[Conv Block 3<br/>256 channels]:::conv
+		C3 --> C4[Conv Block 4<br/>512 channels]:::conv
+		C4 --> Quant[Quantization<br/>KL divergence]:::quant
+		Quant --> Latent[Latent z<br/>4x128x128]:::latent
 	end
 	
-	subgraph VAE Decoder
-		Latent2[Latent z<br/>4×128×128] --> D1[TransposeConv 1<br/>512 channels]
-		D1 --> D2[TransposeConv 2<br/>256 channels]
-		D2 --> D3[TransposeConv 3<br/>128 channels]
-		D3 --> D4[TransposeConv 4<br/>64 channels]
-		D4 --> Slice[Sliced Decode<br/>prevent OOM]
-		Slice --> ImgOut[RGB Image<br/>3×1024×1024]
+	subgraph Decoder["VAE Decoder"]
+		Latent2[Latent z<br/>4x128x128]:::latent --> D1[TransposeConv 1<br/>512 channels]:::deconv
+		D1 --> D2[TransposeConv 2<br/>256 channels]:::deconv
+		D2 --> D3[TransposeConv 3<br/>128 channels]:::deconv
+		D3 --> D4[TransposeConv 4<br/>64 channels]:::deconv
+		D4 --> Slice[Sliced Decode<br/>prevent OOM]:::slice
+		Slice --> ImgOut[RGB Image<br/>3x1024x1024]:::output
 	end
 	
 	Latent -.8x compression.-> Latent2
+	
+	classDef input fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+	classDef conv fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+	classDef quant fill:#fff3e0,stroke:#e65100,stroke-width:3px
+	classDef latent fill:#fff9c4,stroke:#f57f17,stroke-width:4px
+	classDef deconv fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+	classDef slice fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+	classDef output fill:#c8e6c9,stroke:#1b5e20,stroke-width:3px
 ```
 
 **Key Features**:
@@ -464,36 +511,47 @@ ToMe reduces computational cost by identifying and merging similar tokens in the
 
 ```mermaid
 flowchart TD
-	subgraph Before ToMe
-		T1["Tokens (N=16384)<br/>128×128 spatial"] --> Attn1[Self-Attention<br/>O(N²) complexity]
-		Attn1 --> Out1["Output (N=16384)"]
+	subgraph Before["Before ToMe"]
+		T1[Tokens: 16384<br/>128x128 spatial]:::before --> Attn1[Self-Attention<br/>High complexity]:::attnBefore
+		Attn1 --> Out1[Output: 16384]:::before
 	end
 	
-	subgraph ToMe Process ratio=0.4
-		T2["Tokens (N=16384)"] --> Sim[Compute Token<br/>Similarity Matrix]
-		Sim --> Merge["Merge 40% most<br/>similar tokens"]
-		Merge --> T3["Reduced Tokens<br/>(N'=9830)"]
+	subgraph Process["ToMe Process - 40% Reduction"]
+		T2[Input Tokens<br/>16384]:::process --> Sim[Compute Token<br/>Similarity]:::process
+		Sim --> Merge[Merge 40%<br/>similar tokens]:::merge
+		Merge --> T3[Reduced Tokens<br/>9830]:::reduced
 	end
 	
-	subgraph After ToMe
-		T3 --> Attn2[Self-Attention<br/>O(N'²) complexity]
-		Attn2 --> Unmerge[Unmerge tokens<br/>back to original positions]
-		Unmerge --> Out2["Output (N=16384)"]
+	subgraph After["After ToMe"]
+		T3 --> Attn2[Self-Attention<br/>Lower complexity]:::attnAfter
+		Attn2 --> Unmerge[Unmerge tokens<br/>restore positions]:::unmerge
+		Unmerge --> Out2[Output: 16384]:::after
 	end
 	
-	T2 -.ratio=0.4.-> T3
+	Out1 -.40% faster.-> Out2
+	
+	classDef before fill:#ffebee,stroke:#c62828,stroke-width:2px
+	classDef attnBefore fill:#ffcdd2,stroke:#b71c1c,stroke-width:3px
+	classDef process fill:#fff3e0,stroke:#e65100,stroke-width:2px
+	classDef merge fill:#ffe0b2,stroke:#ef6c00,stroke-width:3px
+	classDef reduced fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+	classDef attnAfter fill:#c8e6c9,stroke:#1b5e20,stroke-width:3px
+	classDef unmerge fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+	classDef after fill:#c5cae9,stroke:#283593,stroke-width:2px
 ```
 
 **Computational Savings**:
-- Original: $O(16384^2) \approx 268M$ operations
-- With ToMe (r=0.4): $O(9830^2) \approx 97M$ operations
-- **Speedup**: ~2.8× for attention layers (~35% faster overall)
+- Original tokens: 16,384 → ~268M operations
+- With ToMe (40% reduction): 9,830 tokens → ~97M operations
+- **Result**: 2.8× faster attention, 35% faster overall inference
 
-**Merge Strategy**:
-1. Compute cosine similarity between adjacent tokens
-2. Identify pairs with highest similarity
-3. Merge via weighted average based on attention scores
-4. After processing, tokens are "unmerged" to restore spatial structure
+**How ToMe Works**:
+1. Analyze similarity between neighboring tokens
+2. Find the most similar token pairs
+3. Merge them using weighted averaging
+4. Process through attention layers (faster)
+5. Unmerge tokens back to original positions
+6. Output maintains same resolution
 
 ### SDXL Time Embedding & Conditioning
 
@@ -501,73 +559,86 @@ SDXL conditions the UNet on multiple factors beyond just text.
 
 ```mermaid
 flowchart TB
-	subgraph Timestep Conditioning
-		T["Timestep t<br/>0 to 1000"] --> Sin[Sinusoidal Embedding<br/>sin/cos frequencies]
-		Sin --> MLP1["MLP<br/>320→1280"]
-		MLP1 --> TimeEmb[Time Embedding<br/>1280-d]
+	subgraph Timestep["Timestep Conditioning"]
+		T[Timestep t<br/>0 to 1000]:::time --> Sin[Sinusoidal<br/>Embedding]:::embed
+		Sin --> MLP1[MLP<br/>320 to 1280]:::mlp
+		MLP1 --> TimeEmb[Time Embedding<br/>1280-d]:::timeEmb
 	end
 	
-	subgraph Resolution Conditioning
-		OrigSize["Original Size<br/>(H_orig, W_orig)"] --> SizeEmb[Size Embedding]
-		TargetSize["Target Size<br/>(1024, 1024)"] --> SizeEmb
-		CropCoords["Crop Coords<br/>(top, left)"] --> SizeEmb
-		SizeEmb --> SizeVec["Size Vector<br/>256-d"]
+	subgraph Resolution["Resolution Conditioning"]
+		OrigSize[Original Size]:::size --> SizeEmb[Size<br/>Embedding]:::sizeEmb
+		TargetSize[Target Size<br/>1024x1024]:::size --> SizeEmb
+		CropCoords[Crop Coords]:::size --> SizeEmb
+		SizeEmb --> SizeVec[Size Vector<br/>256-d]:::sizeVec
 	end
 	
-	subgraph Text Conditioning
-		Pool1[Pooled CLIP ViT-L] --> PoolMLP[MLP Projection]
-		Pool2[Pooled CLIP ViT-bigG] --> PoolMLP
-		PoolMLP --> TextVec[Text Vector<br/>1280-d]
+	subgraph Text["Text Conditioning"]
+		Pool1[Pooled CLIP ViT-L]:::pool --> PoolMLP[MLP Projection]:::mlp
+		Pool2[Pooled CLIP ViT-bigG]:::pool --> PoolMLP
+		PoolMLP --> TextVec[Text Vector<br/>1280-d]:::textVec
 	end
 	
 	subgraph Fusion
-		TimeEmb --> Add[Add]
+		TimeEmb --> Add[Combine All]:::fusion
 		SizeVec --> Add
 		TextVec --> Add
-		Add --> CondVec["Final Conditioning Vector<br/>1280-d"]
+		Add --> CondVec[Final Conditioning<br/>Vector 1280-d]:::final
 	end
 	
-	subgraph UNet Integration
-		CondVec --> ResNet1[ResNet Block 1<br/>+ CondVec via AdaGN]
-		CondVec --> ResNet2[ResNet Block 2<br/>+ CondVec via AdaGN]
-		CondVec --> ResNetN[ResNet Block N<br/>+ CondVec via AdaGN]
-	end
+	CondVec --> ResNet1[ResNet Block 1<br/>with AdaGN]:::resnet
+	CondVec --> ResNet2[ResNet Block 2<br/>with AdaGN]:::resnet
+	CondVec --> ResNetN[ResNet Block N<br/>with AdaGN]:::resnet
+	
+	classDef time fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+	classDef embed fill:#bbdefb,stroke:#1976d2,stroke-width:2px
+	classDef mlp fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+	classDef timeEmb fill:#ce93d8,stroke:#7b1fa2,stroke-width:3px
+	classDef size fill:#fff3e0,stroke:#e65100,stroke-width:2px
+	classDef sizeEmb fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px
+	classDef sizeVec fill:#ffcc80,stroke:#f57c00,stroke-width:3px
+	classDef pool fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+	classDef textVec fill:#81c784,stroke:#1b5e20,stroke-width:3px
+	classDef fusion fill:#fce4ec,stroke:#880e4f,stroke-width:3px
+	classDef final fill:#f48fb1,stroke:#ad1457,stroke-width:4px
+	classDef resnet fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 ```
 
 **Adaptive Group Normalization (AdaGN)**:
-```
-AdaGN(h, c) = GroupNorm(h) * (1 + scale(c)) + shift(c)
-```
-Where:
-- `h`: hidden features from previous layer
-- `c`: conditioning vector
-- `scale(c)` and `shift(c)`: learned linear projections
+- Injects conditioning signal (time, text, resolution) into UNet
+- Applies learned scaling and shifting to normalized features
+- Allows UNet to adapt behavior based on timestep and prompt
 
-**Time Embedding Math**:
-```
-pos_emb[i] = sin(t / 10000^(2i/d))  for even i
-pos_emb[i] = cos(t / 10000^(2i/d))  for odd i
-```
-Provides smooth, continuous representation of denoising progress.
+**Time Embedding**:
+- Uses sinusoidal functions (sin/cos) to encode timestep
+- Creates smooth, continuous signal from t=0 to t=1000
+- Helps UNet understand denoising progress
 
 ### NF4 Quantization Mechanism
 
 ```mermaid
 flowchart LR
-	subgraph Standard fp16 Storage
-		W1[Weights<br/>fp16<br/>2 bytes/param] --> GPU1[GPU Memory<br/>~10 GB for UNet]
+	subgraph Standard["Standard fp16 Storage"]
+		W1[Weights<br/>fp16<br/>2 bytes per param]:::fp16 --> GPU1[GPU Memory<br/>10 GB for UNet]:::gpuBefore
 	end
 	
-	subgraph NF4 Quantization
-		W2[Weights<br/>fp16] --> Q[Quantize to<br/>4-bit NF4<br/>learned codebook]
-		Q --> Store[Compressed<br/>0.5 bytes/param]
-		Store --> DQ[Dequantize to<br/>fp16 on-the-fly]
-		DQ --> Compute[Compute in<br/>fp16]
+	subgraph NF4["NF4 Quantization"]
+		W2[Weights<br/>fp16]:::fp16 --> Q[Quantize to<br/>4-bit NF4]:::quant
+		Q --> Store[Compressed<br/>0.5 bytes per param]:::compressed
+		Store --> DQ[Dequantize to<br/>fp16 on-the-fly]:::dequant
+		DQ --> Compute[Compute in<br/>fp16]:::compute
 	end
 	
 	subgraph Result
-		Compute --> GPU2[GPU Memory<br/>~2.5 GB for UNet<br/>75% reduction]
+		Compute --> GPU2[GPU Memory<br/>2.5 GB for UNet<br/>75% reduction]:::gpuAfter
 	end
+	
+	classDef fp16 fill:#ffebee,stroke:#c62828,stroke-width:2px
+	classDef gpuBefore fill:#ffcdd2,stroke:#b71c1c,stroke-width:3px
+	classDef quant fill:#fff3e0,stroke:#e65100,stroke-width:2px
+	classDef compressed fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px
+	classDef dequant fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+	classDef compute fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+	classDef gpuAfter fill:#c8e6c9,stroke:#1b5e20,stroke-width:3px
 ```
 
 **NF4 (Normal Float 4-bit)**:
@@ -582,34 +653,48 @@ Cross-attention allows text embeddings to influence image generation at the pixe
 
 ```mermaid
 flowchart TB
-	subgraph Spatial Features from UNet
-		Latent["Latent Features h<br/>B×C×H×W"] --> Reshape["Reshape to<br/>B×(H*W)×C"]
-		Reshape --> QProj["Query Projection<br/>Linear(C, D)"]
-		QProj --> Q["Queries Q<br/>B×(H*W)×D"]
+	subgraph Spatial["Spatial Features from UNet"]
+		Latent[Latent Features<br/>BxCxHxW]:::latent --> Reshape[Reshape to<br/>sequence]:::reshape
+		Reshape --> QProj[Query Projection<br/>Linear]:::proj
+		QProj --> Q[Queries Q<br/>from image]:::query
 	end
 	
-	subgraph Text Embeddings
-		Text["Text Embeddings<br/>B×77×2048"] --> KProj["Key Projection<br/>Linear(2048, D)"]
-		Text --> VProj["Value Projection<br/>Linear(2048, D)"]
-		KProj --> K["Keys K<br/>B×77×D"]
-		VProj --> V["Values V<br/>B×77×D"]
+	subgraph Text["Text Embeddings"]
+		TextEmb[Text Embeddings<br/>Bx77x2048]:::text --> KProj[Key Projection<br/>Linear]:::proj
+		TextEmb --> VProj[Value Projection<br/>Linear]:::proj
+		KProj --> K[Keys K<br/>from text]:::key
+		VProj --> V[Values V<br/>from text]:::value
 	end
 	
-	subgraph Attention Computation
-		Q --> MatMul1["Q × K^T<br/>B×(H*W)×77"]
+	subgraph Attention["Attention Computation"]
+		Q --> MatMul1[Q times K transpose]:::matmul
 		K --> MatMul1
-		MatMul1 --> Scale["Scale by<br/>1/√D"]
-		Scale --> Softmax["Softmax<br/>Attention Weights"]
-		Softmax --> Attn["Attention Map<br/>B×(H*W)×77"]
+		MatMul1 --> Scale[Scale<br/>normalize]:::scale
+		Scale --> Softmax[Softmax<br/>Attention Weights]:::softmax
+		Softmax --> Attn[Attention Map<br/>which words affect which pixels]:::attnMap
 	end
 	
-	subgraph Output
-		Attn --> MatMul2["Attn × V<br/>Weighted sum of text features"]
+	subgraph Output["Output"]
+		Attn --> MatMul2[Weighted sum<br/>of text features]:::matmul
 		V --> MatMul2
-		MatMul2 --> Out["Output Features<br/>B×(H*W)×D"]
-		Out --> Reshape2["Reshape to<br/>B×D×H×W"]
-		Reshape2 --> Final["Attended Features<br/>+ Residual Connection"]
+		MatMul2 --> Out[Output Features<br/>text-guided]:::output
+		Out --> Reshape2[Reshape back]:::reshape
+		Reshape2 --> Final[Attended Features<br/>plus residual]:::final
 	end
+	
+	classDef latent fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+	classDef reshape fill:#bbdefb,stroke:#1976d2,stroke-width:2px
+	classDef proj fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+	classDef query fill:#ce93d8,stroke:#7b1fa2,stroke-width:3px
+	classDef text fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+	classDef key fill:#81c784,stroke:#1b5e20,stroke-width:2px
+	classDef value fill:#a5d6a7,stroke:#388e3c,stroke-width:2px
+	classDef matmul fill:#fff3e0,stroke:#e65100,stroke-width:2px
+	classDef scale fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px
+	classDef softmax fill:#ffcc80,stroke:#f57c00,stroke-width:3px
+	classDef attnMap fill:#fce4ec,stroke:#880e4f,stroke-width:3px
+	classDef output fill:#f48fb1,stroke:#ad1457,stroke-width:2px
+	classDef final fill:#fff9c4,stroke:#f57f17,stroke-width:3px
 ```
 
 **Attention Visualization**:
@@ -685,28 +770,38 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-	subgraph Forward Diffusion Training
-		X0["Clean Image x₀"] -->|+noise β₁| X1["Slightly noisy x₁"]
-		X1 -->|+noise β₂| X2[x₂]
-		X2 -->|...| XT["Pure noise x_T<br/>t=1000"]
+	subgraph Forward[\"Forward Diffusion - Training\"]
+		X0[Clean Image]:::clean -->|add noise| X1[Slightly noisy]:::noise1
+		X1 -->|add noise| X2[More noisy]:::noise2
+		X2 -->|continue| XT[Pure noise<br/>t equals 1000]:::pureNoise
 	end
 	
-	subgraph Reverse Diffusion Inference
-		ZT["Random noise z_T<br/>~N(0,I)"] -->|UNet step 1| ZT1[z_{T-1}]
-		ZT1 -->|UNet step 2| ZT2[z_{T-2}]
-		ZT2 -->|"... (30 steps)<br/>trailing schedule"| Z1[z_1]
-		Z1 -->|UNet step 30| Z0["Clean latent z₀"]
+	subgraph Reverse[\"Reverse Diffusion - Inference\"]
+		ZT[Random noise<br/>start]:::start -->|UNet step 1| ZT1[Less noisy]:::denoise1
+		ZT1 -->|UNet step 2| ZT2[Even less noisy]:::denoise2
+		ZT2 -->|30 steps total<br/>trailing schedule| Z1[Almost clean]:::denoise3
+		Z1 -->|UNet step 30| Z0[Clean latent]:::cleanLatent
 	end
 	
-	Z0 --> VAE[VAE Decoder]
-	VAE --> Img["Output Image<br/>1024×1024"]
+	Z0 --> VAE[VAE Decoder]:::vae
+	VAE --> Img[Output Image<br/>1024x1024]:::output
+	
+	classDef clean fill:#c8e6c9,stroke:#1b5e20,stroke-width:3px
+	classDef noise1 fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+	classDef noise2 fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px
+	classDef pureNoise fill:#ffcdd2,stroke:#b71c1c,stroke-width:3px
+	classDef start fill:#ffebee,stroke:#c62828,stroke-width:3px
+	classDef denoise1 fill:#ffccbc,stroke:#d84315,stroke-width:2px
+	classDef denoise2 fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+	classDef denoise3 fill:#dcedc8,stroke:#558b2f,stroke-width:2px
+	classDef cleanLatent fill:#c8e6c9,stroke:#1b5e20,stroke-width:3px
+	classDef vae fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+	classDef output fill:#f3e5f5,stroke:#6a1b9a,stroke-width:3px
 ```
 
 **Trailing Timestep Spacing**:
-```python
-timesteps = [999, 970, 941, 912, ..., 50, 25, 12, 6, 3, 1, 0]
-```
-More steps concentrated at the end (low noise) where visual details form.
+- Timesteps: [999, 970, 941, 912, ..., 50, 25, 12, 6, 3, 1, 0]
+- More steps concentrated at the end (low noise) where visual details form
 
 **Comparison**:
 | Spacing | Early Steps | Late Steps | Quality | Speed |
@@ -1010,27 +1105,42 @@ curl -Method POST "http://localhost:8080/harmonize" -Form image=@"C:\img\composi
 
 ```mermaid
 flowchart TB
-	subgraph SD 1.5 Pipeline
-		T1_15["Single Text Encoder<br/>CLIP ViT-L/14<br/>768-d embeddings"] --> U1_15["UNet<br/>860M params<br/>512×512 training"]
-		U1_15 --> V1_15["VAE<br/>4×64×64 latents"]
-		V1_15 --> Out1_15["512×512 Image"]
+	subgraph SD15[\"SD 1.5 Pipeline\"]
+		T1_15[Single Text Encoder<br/>CLIP ViT-L<br/>768-d embeddings]:::sd15text --> U1_15[UNet<br/>860M params<br/>512x512 training]:::sd15unet
+		U1_15 --> V1_15[VAE<br/>4x64x64 latents]:::sd15vae
+		V1_15 --> Out1_15[512x512 Image]:::sd15out
 	end
 	
-	subgraph SDXL Pipeline kortex implementation
-		T1_XL["Text Encoder 1<br/>CLIP ViT-L/14<br/>768-d"] --> Concat_XL["Concat<br/>2048-d total"]
-		T2_XL["Text Encoder 2<br/>CLIP ViT-bigG/14<br/>1280-d"] --> Concat_XL
-		Concat_XL --> U1_XL["UNet<br/>2.6B params<br/>1024×1024 training<br/>+ ControlNet guidance"]
-		U1_XL --> V1_XL["VAE fp16-fix<br/>4×128×128 latents"]
-		V1_XL --> Out1_XL["1024×1024 Image"]
+	subgraph SDXL[\"SDXL Pipeline - kortex\"]
+		T1_XL[Text Encoder 1<br/>CLIP ViT-L<br/>768-d]:::sdxltext --> Concat_XL[Concat<br/>2048-d total]:::concat
+		T2_XL[Text Encoder 2<br/>CLIP ViT-bigG<br/>1280-d]:::sdxltext --> Concat_XL
+		Concat_XL --> U1_XL[UNet<br/>2.6B params<br/>1024x1024 training<br/>with ControlNet]:::sdxlunet
+		U1_XL --> V1_XL[VAE fp16-fix<br/>4x128x128 latents]:::sdxlvae
+		V1_XL --> Out1_XL[1024x1024 Image]:::sdxlout
 	end
 	
-	subgraph Optimizations Applied
-		T1_XL -.4-bit NF4.-> T1_XL
-		T2_XL -.4-bit NF4.-> T2_XL
-		U1_XL -.4-bit NF4.-> U1_XL
-		U1_XL -.ToMe 40%.-> U1_XL
-		V1_XL -.slicing.-> V1_XL
+	subgraph Optimizations[\"Optimizations Applied\"]
+		Opt1[4-bit NF4 Quantization]:::opt
+		Opt2[ToMe 40% pruning]:::opt
+		Opt3[VAE slicing]:::opt
 	end
+	
+	T1_XL -.optimized.-> Opt1
+	T2_XL -.optimized.-> Opt1
+	U1_XL -.optimized.-> Opt1
+	U1_XL -.optimized.-> Opt2
+	V1_XL -.optimized.-> Opt3
+	
+	classDef sd15text fill:#ffebee,stroke:#c62828,stroke-width:2px
+	classDef sd15unet fill:#ffcdd2,stroke:#b71c1c,stroke-width:2px
+	classDef sd15vae fill:#ef9a9a,stroke:#d32f2f,stroke-width:2px
+	classDef sd15out fill:#e57373,stroke:#c62828,stroke-width:2px
+	classDef sdxltext fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+	classDef concat fill:#c8e6c9,stroke:#1b5e20,stroke-width:3px
+	classDef sdxlunet fill:#a5d6a7,stroke:#388e3c,stroke-width:3px
+	classDef sdxlvae fill:#81c784,stroke:#2e7d32,stroke-width:2px
+	classDef sdxlout fill:#66bb6a,stroke:#1b5e20,stroke-width:3px
+	classDef opt fill:#fff3e0,stroke:#e65100,stroke-width:2px
 ```
 
 **Key SDXL Improvements**:
@@ -1038,8 +1148,8 @@ flowchart TB
 |---------|--------|------|--------|
 | Text Encoders | 1 (CLIP ViT-L) | 2 (ViT-L + ViT-bigG) | Richer semantic understanding |
 | UNet Size | 860M params | 2.6B params | Better detail and coherence |
-| Training Resolution | 512×512 | 1024×1024 | Native high-res generation |
-| Latent Size | 4×64×64 | 4×128×128 | More spatial information |
+| Training Resolution | 512x512 | 1024x1024 | Native high-res generation |
+| Latent Size | 4x64x64 | 4x128x128 | More spatial information |
 | Conditioning | Text only | Text + Size + Crop coords | Aspect ratio awareness |
 | VRAM (unoptimized) | ~4-6 GB | ~18-22 GB | Requires optimization |
 | **VRAM (our stack)** | - | **~7 GB** | **Via NF4 + ToMe** |
@@ -1327,5 +1437,7 @@ flowchart TB
 - Text Embeddings: `77×2048` (sequence length × embedding dim)
 - UNet Hidden: `1280` channels at bottleneck
 - ControlNet Features: Multi-scale `[64, 128, 256]` channels
+
+
 
 
