@@ -11,7 +11,7 @@ This repository contains a high-efficiency generative fill and image harmonizati
 Built-in resource monitoring (RAM, CPU, GPU utilization) and TFLOPS estimation, logging metrics directly to Weights & Biases (WandB).Built with FastAPI and Diffusers.
 ### Project Structure
 ```Bash
-├── abhyu-s/diffusion_tobeused/
+├── /diffusion_tobeused/
 │   ├── server.py                 # Application API (FastAPI endpoints)
 │   ├── editing_pipelines_fill.py # Core Diffusion Logic (SDXL & ControlNet)
 │   ├── quantization_utils.py     # 4-bit NF4 Configuration Logic
