@@ -93,7 +93,9 @@ flowchart TB
 	Cn --> U
 	U --> V
 	Sch --> U
-``````mermaid
+```
+
+```mermaid
 flowchart LR
     Img[Input Image] -- mask --> Cn
     Cn -- control --> U
@@ -1221,11 +1223,11 @@ flowchart TD
     Dec -->|No| E422[Return 422]
     Dec -->|Yes| Inf[Run Inference]
     Inf --> Err{Exception?}
-    Err -->|CUDA OOM| Log[Log to console/W&B]
+    Err -->|CUDA OOM| Log[Log to console and W&B]
     Log --> E500[Return 500]
     Err -->|Other| Log
     Err -->|No| Enc[Encode PNG]
-    Enc --> Res[Return 200 + image]
+    Enc --> Res[Return 200 plus image]
 ```
 
 ---
