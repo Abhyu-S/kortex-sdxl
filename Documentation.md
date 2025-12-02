@@ -1,4 +1,5 @@
-## Summary
+# Image Editing with Stable Diffusion XL with Generative Fill and Harmonization
+
 Kortex-SDXL is a production-ready image editing service built on Stable Diffusion XL (SDXL) with ControlNet for inpainting. It provides two primary capabilities: (1) text-guided Generative Fill to synthesize content within a mask while preserving structure, and (2) edge-aware Harmonization to blend pasted or moved objects into a scene. The system assembles SDXL components with an fp16 VAE and applies aggressive but quality-preserving optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then optionally performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar) but supports CPU fallback with significantly higher latency.
 
 ## Table of Contents
@@ -21,10 +22,6 @@ Kortex-SDXL is a production-ready image editing service built on Stable Diffusio
 - [Quick Links](#quick-links)
 - [References & Citations](#references--citations)
 - [Appendix: Prompts, Workflows, Examples](#appendix-prompts-workflows-examples)
-
-# Image Editing with Stable Diffusion XL with Generative Fill and Harmonization
-
-This document provides a comprehensive guide to the repository.
 
 ---
 
