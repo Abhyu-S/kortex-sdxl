@@ -57,17 +57,15 @@ This project utilizes a **Training-Free approach**. It leverages pre-trained wei
 
 ```mermaid
 flowchart LR
-    A[Client] --> B[FastAPI Server]
-    B -->|decode| C[Image + Mask]
-    B -->|route| D[EditingPipelines]
-    D -->|inpaint| E[SDXL + ControlNet]
-    D -->|optional| F[SDXL Img2Img (Vibe Match)]
-    E --> G[Result]
-    F --> G
-    G --> H[PNG Response]
-```
-
-### Component Breakdown
+	A[Client] --> B[FastAPI Server]
+	B -->|decode| C[Image + Mask]
+	B -->|route| D[EditingPipelines]
+	D -->|inpaint| E[SDXL + ControlNet]
+	D -->|optional| F[SDXL Img2Img Vibe Match]
+	E --> G[Result]
+	F --> G
+	G --> H[PNG Response]
+```### Component Breakdown
 
 | Component | Role | Precision | Notes |
 |---|---|---|---|
@@ -80,22 +78,20 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Pipelines
-        U[UNet (NF4/fp16)]
-        T1[TextEncoder1 (NF4/fp16)]
-        T2[TextEncoder2 (NF4/fp16)]
-        V[VAE (fp16)]
-        Cn[ControlNet (fp16)]
-        Sch[Scheduler]
-    end
-    T1 --> U
-    T2 --> U
-    Cn --> U
-    U --> V
-    Sch --> U
-```
-
-```mermaid
+	subgraph Pipelines
+		U[UNet NF4 fp16]
+		T1[TextEncoder1 NF4 fp16]
+		T2[TextEncoder2 NF4 fp16]
+		V[VAE fp16]
+		Cn[ControlNet fp16]
+		Sch[Scheduler]
+	end
+	T1 --> U
+	T2 --> U
+	Cn --> U
+	U --> V
+	Sch --> U
+``````mermaid
 flowchart LR
     Img[Input Image] -- mask --> Cn
     Cn -- control --> U
@@ -112,23 +108,23 @@ The UNet is the core denoising engine. It processes latent representations throu
 ```mermaid
 flowchart TD
     subgraph UNet Architecture
-        Input[Noisy Latent z_t<br/>4x128x128] --> Down1[DownBlock 1<br/>Conv + ResNet]
-        Down1 --> Attn1[Self-Attention<br/>+ Cross-Attention<br/>with Text Embeddings]
-        Attn1 -->|ToMe merges tokens| Down2[DownBlock 2<br/>Conv + ResNet]
-        Down2 --> Attn2[Self-Attention<br/>+ Cross-Attention]
-        Attn2 --> Down3[DownBlock 3<br/>Bottleneck]
+        Input[Noisy Latent zt 4x128x128] --> Down1[DownBlock 1 Conv ResNet]
+        Down1 --> Attn1[Self-Attention Cross-Attention with Text Embeddings]
+        Attn1 -->|ToMe merges tokens| Down2[DownBlock 2 Conv ResNet]
+        Down2 --> Attn2[Self-Attention Cross-Attention]
+        Attn2 --> Down3[DownBlock 3 Bottleneck]
         
-        Down3 --> Mid[MidBlock<br/>ResNet + Attention]
+        Down3 --> Mid[MidBlock ResNet Attention]
         
-        Mid --> Up3[UpBlock 3<br/>TransposeConv]
+        Mid --> Up3[UpBlock 3 TransposeConv]
         Down2 -.skip.-> Up3
-        Up3 --> Attn3[Self-Attention<br/>+ Cross-Attention]
-        Attn3 --> Up2[UpBlock 2<br/>TransposeConv]
+        Up3 --> Attn3[Self-Attention Cross-Attention]
+        Attn3 --> Up2[UpBlock 2 TransposeConv]
         Down1 -.skip.-> Up2
-        Up2 --> Attn4[Self-Attention<br/>+ Cross-Attention]
-        Attn4 --> Up1[UpBlock 1<br/>Output Conv]
+        Up2 --> Attn4[Self-Attention Cross-Attention]
+        Attn4 --> Up1[UpBlock 1 Output Conv]
         
-        Up1 --> Output[Denoised Latent z_{t-1}<br/>4x128x128]
+        Up1 --> Output[Denoised Latent zt-1 4x128x128]
     end
     
     Prompt[Text Prompt] --> TE1[Text Encoder 1<br/>CLIP ViT-L/14<br/>NF4 Quantized]
@@ -465,23 +461,23 @@ ToMe reduces computational cost by identifying and merging similar tokens in the
 ```mermaid
 flowchart TD
     subgraph Before ToMe
-        T1["Tokens (N=16384)<br/>128x128 spatial"] --> Attn1[Self-Attention<br/>O(N²) complexity]
-        Attn1 --> Out1["Output (N=16384)"]
+        T1["Tokens N 16384 128x128 spatial"] --> Attn1[Self-Attention O N squared complexity]
+        Attn1 --> Out1["Output N 16384"]
     end
     
-    subgraph ToMe Process ratio=0.4
-        T2["Tokens (N=16384)"] --> Sim[Compute Token<br/>Similarity Matrix]
-        Sim --> Merge["Merge 40% most<br/>similar tokens"]
-        Merge --> T3["Reduced Tokens<br/>(N'=9830)"]
+    subgraph ToMe Process
+        T2["Tokens N 16384"] --> Sim[Compute Token Similarity Matrix]
+        Sim --> Merge["Merge 40 percent most similar tokens"]
+        Merge --> T3["Reduced Tokens N prime 9830"]
     end
     
     subgraph After ToMe
-        T3 --> Attn2[Self-Attention<br/>O(N'²) complexity]
-        Attn2 --> Unmerge[Unmerge tokens<br/>back to original positions]
-        Unmerge --> Out2["Output (N=16384)"]
+        T3 --> Attn2[Self-Attention O N prime squared complexity]
+        Attn2 --> Unmerge[Unmerge tokens back to original positions]
+        Unmerge --> Out2["Output N 16384"]
     end
     
-    T2 -.ratio=0.4.-> T3
+    T2 -.ratio 0.4.-> T3
 ```
 
 **Computational Savings**:
@@ -686,20 +682,20 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Forward Diffusion Training
-        X0["Clean Image x₀"] -->|+noise β₁| X1["Slightly noisy x₁"]
-        X1 -->|+noise β₂| X2[x₂]
-        X2 -->|...| XT["Pure noise x_T<br/>t=1000"]
+        X0["Clean Image x0"] -->|noise beta1| X1["Slightly noisy x1"]
+        X1 -->|noise beta2| X2[x2]
+        X2 -->|more steps| XT["Pure noise xT t equals 1000"]
     end
     
     subgraph Reverse Diffusion Inference
-        ZT["Random noise z_T<br/>~N(0,I)"] -->|UNet step 1| ZT1[z_{T-1}]
-        ZT1 -->|UNet step 2| ZT2[z_{T-2}]
-        ZT2 -->|"... (30 steps)<br/>trailing schedule"| Z1[z_1]
-        Z1 -->|UNet step 30| Z0["Clean latent z₀"]
+        ZT["Random noise zT approx N 0 I"] -->|UNet step 1| ZT1[zT minus 1]
+        ZT1 -->|UNet step 2| ZT2[zT minus 2]
+        ZT2 -->|30 steps trailing schedule| Z1[z1]
+        Z1 -->|UNet step 30| Z0["Clean latent z0"]
     end
     
     Z0 --> VAE[VAE Decoder]
-    VAE --> Img["Output Image<br/>1024×1024"]
+    VAE --> Img["Output Image 1024x1024"]
 ```
 
 **Trailing Timestep Spacing**:
@@ -823,21 +819,20 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Forward Diffusion Training
-        X0["Clean Image x₀"] -->|+noise β₁| X1["Slightly noisy x₁"]
-        X1 -->|+noise β₂| X2[x₂]
-        X2 -->|...| XT["Pure noise x_T<br/>t=1000"]
+        X0["Clean Image x0"] -->|noise beta1| X1["Slightly noisy x1"]
+        X1 -->|noise beta2| X2[x2]
+        X2 -->|more steps| XT["Pure noise xT t equals 1000"]
     end
     
     subgraph Reverse Diffusion Inference
-        ZT["Random noise z_T<br/>~N(0,I)"] -->|UNet step 1| ZT1[z_{T-1}]
-        ZT1 -->|UNet step 2| ZT2[z_{T-2}]
-        ZT2 -->|"... (30 steps)
-    trailing schedule"| Z1[z_1]
-        Z1 -->|UNet step 30| Z0["Clean latent z₀"]
+        ZT["Random noise zT approx N 0 I"] -->|UNet step 1| ZT1[zT minus 1]
+        ZT1 -->|UNet step 2| ZT2[zT minus 2]
+        ZT2 -->|30 steps trailing schedule| Z1[z1]
+        Z1 -->|UNet step 30| Z0["Clean latent z0"]
     end
     
     Z0 --> VAE[VAE Decoder]
-    VAE --> Img["Output Image<br/>1024×1024"]
+    VAE --> Img["Output Image 1024x1024"]
 ```
 
 **Trailing Timestep Spacing**:
