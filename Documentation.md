@@ -65,7 +65,9 @@ flowchart LR
 	E --> G[Result]
 	F --> G
 	G --> H[PNG Response]
-```### Component Breakdown
+```
+
+### Component Breakdown
 
 | Component | Role | Precision | Notes |
 |---|---|---|---|
@@ -477,7 +479,7 @@ flowchart TD
         Unmerge --> Out2["Output N 16384"]
     end
     
-    T2 -.ratio 0.4.-> T3
+    T2 -.-> T3
 ```
 
 **Computational Savings**:
@@ -1128,10 +1130,10 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     M[Mask] --> DS[Downscale]
-    DS --> MF[MaxFilter (odd k)]
+    DS --> MF[MaxFilter odd k]
     MF --> B[BBox]
     B --> CR[Crop]
-    CR --> E[Edge Mask (Dilate-Erode-Blur)]
+    CR --> E[Edge Mask Dilate-Erode-Blur]
     E --> IP[Inpaint Crop]
     IP --> P[Paste RGBA on Base]
     P --> O[Final]
@@ -1256,63 +1258,63 @@ This diagram shows the complete data transformation through all deep learning co
 ```mermaid
 flowchart TB
     subgraph Input Processing
-        Img[RGB Image<br/>H×W×3] --> Resize1[Resize to<br/>1024×1024]
-        Mask[Binary Mask<br/>H×W×1] --> Resize2[Resize to<br/>1024×1024]
+        Img[RGB Image HxWx3] --> Resize1[Resize to 1024x1024]
+        Mask[Binary Mask HxWx1] --> Resize2[Resize to 1024x1024]
         Prompt[Text Prompt] --> Tok1[Tokenizer 1]
         Prompt --> Tok2[Tokenizer 2]
     end
     
     subgraph Text Encoding NF4
-        Tok1 --> TE1["Text Encoder 1<br/>CLIP ViT-L<br/>4-bit NF4"]
-        Tok2 --> TE2["Text Encoder 2<br/>CLIP ViT-bigG<br/>4-bit NF4"]
-        TE1 --> Pool[Pooled Embeddings<br/>768-d]
+        Tok1 --> TE1["Text Encoder 1 CLIP ViT-L 4-bit NF4"]
+        Tok2 --> TE2["Text Encoder 2 CLIP ViT-bigG 4-bit NF4"]
+        TE1 --> Pool[Pooled Embeddings 768-d]
         TE2 --> Pool
-        Pool --> TE["Text Embeddings<br/>77×2048"]
+        Pool --> TE["Text Embeddings 77x2048"]
     end
     
     subgraph Image Encoding
-        Resize1 --> VE[VAE Encoder<br/>fp16]
-        VE --> LatentClean[Clean Latent z₀<br/>4×128×128]
+        Resize1 --> VE[VAE Encoder fp16]
+        VE --> LatentClean[Clean Latent z0 4x128x128]
     end
     
     subgraph Noise Addition
-        LatentClean --> Noise[Add Noise<br/>t=1000]
-        Noise --> LatentNoisy[Noisy Latent z_t<br/>4×128×128]
+        LatentClean --> Noise[Add Noise t equals 1000]
+        Noise --> LatentNoisy[Noisy Latent zt 4x128x128]
     end
     
     subgraph ControlNet Processing
-        Resize1 --> CN["ControlNet<br/>fp16"]
+        Resize1 --> CN["ControlNet fp16"]
         Resize2 --> CN
-        CN --> CtrlFeatures["Control Features<br/>Multiple scales"]
+        CN --> CtrlFeatures["Control Features Multiple scales"]
     end
     
     subgraph Iterative Denoising 30 steps
-        LatentNoisy --> Step["Denoising Step t→t-1"]
-        TE -.cross-attn.-> Step
-        CtrlFeatures -.residual.-> Step
+        LatentNoisy --> Step["Denoising Step t to t-1"]
+        TE -.-> Step
+        CtrlFeatures -.-> Step
         
-        Step --> UNet["UNet 4-bit NF4<br/>+ ToMe ratio=0.4"]
-        UNet --> Pred[Noise Prediction ε_θ]
-        Pred --> Sched[Scheduler Update<br/>EulerDiscrete]
-        Sched --> LatentNext["z_{t-1}"]
-        LatentNext -.loop 30×.-> Step
+        Step --> UNet["UNet 4-bit NF4 + ToMe ratio 0.4"]
+        UNet --> Pred[Noise Prediction epsilon theta]
+        Pred --> Sched[Scheduler Update EulerDiscrete]
+        Sched --> LatentNext["z t-1"]
+        LatentNext -.-> Step
     end
     
     subgraph Image Decoding
-        LatentNext --> LatentFinal["Denoised Latent z₀<br/>4×128×128"]
-        LatentFinal --> VD["VAE Decoder<br/>fp16 + slicing"]
-        VD --> ImgFilled["Filled Image<br/>1024×1024×3"]
+        LatentNext --> LatentFinal["Denoised Latent z0 4x128x128"]
+        LatentFinal --> VD["VAE Decoder fp16 + slicing"]
+        VD --> ImgFilled["Filled Image 1024x1024x3"]
     end
     
     subgraph Optional Vibe Match
         ImgFilled --> VE2[VAE Encoder]
-        VE2 --> Denoise2["Img2Img Denoise<br/>strength×30 steps"]
-        TE -.guidance 2.5.-> Denoise2
+        VE2 --> Denoise2["Img2Img Denoise strength x 30 steps"]
+        TE -.-> Denoise2
         Denoise2 --> VD2[VAE Decoder]
-        VD2 --> ImgRelit[Relit Image<br/>1024×1024×3]
+        VD2 --> ImgRelit[Relit Image 1024x1024x3]
     end
     
-    ImgRelit --> Final[Resize to<br/>Original H×W]
+    ImgRelit --> Final[Resize to Original HxW]
     Final --> Output[PNG Response]
 ```
 
