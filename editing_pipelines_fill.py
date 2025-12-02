@@ -344,6 +344,9 @@ class EditingPipelines:
 
         final_image = image # Default return if bbox fails
         
+        # Hardcoded prompt used for logging consistency
+        prompt_used = "seamless blending, smooth edges, anti-aliased, coherent lighting, realistic shadows, high quality"
+
         try:
             width, height = image.size
             border_width = 41
@@ -427,7 +430,7 @@ class EditingPipelines:
             if self.device == "cuda": torch.cuda.reset_peak_memory_stats()
 
             output_crop = self.inpaint_pipe(
-                prompt="seamless blending, smooth edges, anti-aliased, coherent lighting, realistic shadows, high quality",
+                prompt=prompt_used,
                 negative_prompt="jagged, zig-zag, pixelated, blurry, artificial, visible seam, cut out, glowing edge",
                 image=work_image,
                 mask_image=work_mask,
@@ -461,11 +464,24 @@ class EditingPipelines:
             if wandb:
                 wandb.log({
                     "request_type": "harmonize",
+                    "prompt": prompt_used,
                     "latency_s": latency,
                     "total_steps": total_steps,
-                    "resolution": f"{process_size[0]}x{process_size[1]}",
+                    
+                    # Resources
+                    "ram_start_gb": ram_start,
                     "ram_peak_gb": ram_peak,
+                    "ram_avg_gb": ram_avg,
+                    "cpu_usage_avg_percent": cpu_avg,
                     "gpu_mem_peak_gb": gpu_mem,
+                    "gpu_util_percent": gpu_util,
+                    
+                    # Compute
+                    "estimated_tflops_total": estimated_tflops,
+                    "estimated_tflops_per_sec": estimated_tflops / latency if latency > 0 else 0,
+                    
+                    # Extra info specific to harmonization
+                    "resolution": f"{process_size[0]}x{process_size[1]}"
                 })
         
         return final_image
