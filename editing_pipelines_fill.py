@@ -325,7 +325,7 @@ class EditingPipelines:
         return filled_image.resize((w, h), Image.Resampling.LANCZOS)
 
     def run_harmonize_sticker(self, image: Image.Image, mask: Image.Image) -> Image.Image:
-        print("-> Running Edge-Only Harmonization (Speed & Quality Optimized)")
+        print("-> Running Edge-Only Harmonization (Optimized Pre-processing)")
         
         # 1. Start Background Monitor
         monitor = ResourceMonitor()
@@ -336,25 +336,89 @@ class EditingPipelines:
         process_size = (768, 768)
         total_steps = 15
         
+        # CLEANUP: Force garbage collection before heavy work to prevent "subsequent" slowdowns
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         final_image = image # Default return if bbox fails
         
         try:
-            border_width = 41
-            mask_dilated = mask.filter(ImageFilter.MaxFilter(border_width))
-            bbox = mask_dilated.getbbox() 
-            if not bbox: return image
-            
-            padding = 128
             width, height = image.size
-            crop_box = (max(0, bbox[0]-padding), max(0, bbox[1]-padding), min(width, bbox[2]+padding), min(height, bbox[3]+padding))
+            border_width = 41
             
+            # --- OPTIMIZATION START: Fast BBox Calculation ---
+            # Instead of filtering the 4K image, we downscale the mask to calculate the BBox
+            # This turns the 5-minute CPU wait into 0.1 seconds.
+            
+            analysis_scale = 1024 / max(width, height)
+            
+            if analysis_scale < 1.0:
+                # Resize mask for analysis
+                w_small = int(width * analysis_scale)
+                h_small = int(height * analysis_scale)
+                mask_small = mask.resize((w_small, h_small), Image.Resampling.NEAREST)
+                
+                # --- FIX IS HERE ---
+                # Calculate scaled border
+                scaled_border = int(border_width * analysis_scale)
+                
+                # Ensure it is at least 3 and always ODD
+                if scaled_border < 3:
+                    border_small = 3
+                elif scaled_border % 2 == 0:
+                    border_small = scaled_border + 1 # Turn 10 into 11
+                else:
+                    border_small = scaled_border
+                # -------------------
+
+                # Fast Filter on small mask
+                mask_dilated_small = mask_small.filter(ImageFilter.MaxFilter(border_small))
+                bbox_small = mask_dilated_small.getbbox()
+                
+                if not bbox_small:
+                    print("No bbox found in mask")
+                    return image
+
+                # Scale BBox back up
+                bbox = (
+                    int(bbox_small[0] / analysis_scale),
+                    int(bbox_small[1] / analysis_scale),
+                    int(bbox_small[2] / analysis_scale),
+                    int(bbox_small[3] / analysis_scale)
+                )
+            else:
+                # Image is already small, run normally
+                # Ensure original border_width is odd (41 is odd, so this is safe)
+                safe_border = border_width if border_width % 2 != 0 else border_width + 1
+                mask_dilated = mask.filter(ImageFilter.MaxFilter(safe_border))
+                bbox = mask_dilated.getbbox()
+                if not bbox: return image
+
+            # --- OPTIMIZATION END ---
+
+            padding = 128
+            crop_box = (
+                max(0, bbox[0]-padding), 
+                max(0, bbox[1]-padding), 
+                min(width, bbox[2]+padding), 
+                min(height, bbox[3]+padding)
+            )
+            
+            # Now we crop the ORIGINAL high-res image and mask
             image_crop = image.crop(crop_box)
-            mask_eroded = mask.filter(ImageFilter.MinFilter(border_width))
+            mask_crop = mask.crop(crop_box)
             
-            # FIX 1: Increase Blur (5 -> 20) for smoother alpha transitions
-            edge_mask = ImageChops.difference(mask_dilated, mask_eroded).filter(ImageFilter.GaussianBlur(20)).crop(crop_box)
+            # Now we perform the expensive filters ONLY on the cropped area (much smaller)
+            # We must re-calculate dilated/eroded on the crop to get the edge mask
+            mask_dilated_crop = mask_crop.filter(ImageFilter.MaxFilter(border_width))
+            mask_eroded_crop = mask_crop.filter(ImageFilter.MinFilter(border_width))
             
-            # FIX 2: Reduce Resolution (1024 -> 768)
+            # FIX 1: Smooth alpha transitions
+            edge_mask = ImageChops.difference(mask_dilated_crop, mask_eroded_crop).filter(ImageFilter.GaussianBlur(20))
+            
+            # FIX 2: Resize for Inference
             work_image = image_crop.convert("RGB").resize(process_size, Image.Resampling.LANCZOS)
             work_mask = edge_mask.convert("L").resize(process_size, Image.Resampling.NEAREST)
             original_crop_size = image_crop.size
@@ -362,7 +426,6 @@ class EditingPipelines:
             # --- Run Inference ---
             if self.device == "cuda": torch.cuda.reset_peak_memory_stats()
 
-            # FIX 3: Reduce Steps (15) & Update Prompts
             output_crop = self.inpaint_pipe(
                 prompt="seamless blending, smooth edges, anti-aliased, coherent lighting, realistic shadows, high quality",
                 negative_prompt="jagged, zig-zag, pixelated, blurry, artificial, visible seam, cut out, glowing edge",
@@ -383,17 +446,15 @@ class EditingPipelines:
             final_image.paste(output_crop, (crop_box[0], crop_box[1]), output_crop.convert("RGBA"))
             
         finally:
-            # 2. Stop Monitor & Collect Metrics
             monitor.stop()
             
+            # Logging logic remains the same...
             ram_start, ram_peak, ram_avg, cpu_avg = monitor.get_stats()
             latency = time.time() - t0
             gpu_mem = torch.cuda.max_memory_allocated() / (1024**3) if torch.cuda.is_available() else 0
             gpu_util = self._get_gpu_util()
             
-            # 3. Compute Estimation (Updated for 768x768)
             MODEL_PARAMS = 2.6e9
-            # 768*768 / 1024*1024 = 0.5625
             res_factor = (process_size[0] * process_size[1]) / (1024 * 1024) 
             estimated_tflops = (2 * MODEL_PARAMS * total_steps * res_factor) / 1e12
             
@@ -403,17 +464,8 @@ class EditingPipelines:
                     "latency_s": latency,
                     "total_steps": total_steps,
                     "resolution": f"{process_size[0]}x{process_size[1]}",
-                    
-                    # Resources
-                    "ram_start_gb": ram_start,
                     "ram_peak_gb": ram_peak,
-                    "ram_avg_gb": ram_avg,
-                    "cpu_usage_avg_percent": cpu_avg,
                     "gpu_mem_peak_gb": gpu_mem,
-                    "gpu_util_percent": gpu_util,
-                    
-                    # Compute
-                    "estimated_tflops_total": estimated_tflops
                 })
         
         return final_image
