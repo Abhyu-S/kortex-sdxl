@@ -1,0 +1,40 @@
+{
+  "os": "Linux-6.8.0-1024-aws-x86_64-with-glibc2.39",
+  "python": "CPython 3.12.11",
+  "startedAt": "2025-12-02T19:04:25.610342Z",
+  "program": "/teamspace/studios/this_studio/diffusion_tobeused/server.py",
+  "codePath": "server.py",
+  "codePathLocal": "server.py",
+  "git": {
+    "remote": "https://github.com/Abhyu-S/kortex-sdxl.git",
+    "commit": "254636eab6a4413dd36eeec1d8e818b12c9a2921"
+  },
+  "email": "abhyudaya410@gmail.com",
+  "root": "/teamspace/studios/this_studio/diffusion_tobeused",
+  "host": "ip-10-192-11-225",
+  "executable": "/home/zeus/miniconda3/envs/cloudspace/bin/python",
+  "cpu_count": 2,
+  "cpu_count_logical": 4,
+  "gpu": "Tesla T4",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "244936478720",
+      "used": "48829624320"
+    }
+  },
+  "memory": {
+    "total": "16555130880"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "Tesla T4",
+      "memoryTotal": "16106127360",
+      "cudaCores": 2560,
+      "architecture": "Turing",
+      "uuid": "GPU-117b181c-1ccb-356e-568c-e01eaaa2dc98"
+    }
+  ],
+  "cudaVersion": "12.8",
+  "writerId": "w2abkofnq8cvybwceb7ynkm0cq0tvdsa"
+}
