@@ -2,7 +2,6 @@
 
 This repository contains a high-efficiency generative fill and image harmonization system powered by Stable Diffusion XL (SDXL) and ControlNet. It implements advanced optimization techniques to run heavy diffusion pipelines with reduced latency and memory footprint.The system allows users to perform complex image editing tasks - such as object replacement, background generation, and sticker harmonization - while maintaining photometric consistency through a "Vibe Match" mechanism.
 
-## Vision: The 2030 Compute Proxy
 To address the challenge's requirement for a mobile-first editor operating on limited compute, we utilized the NVIDIA Tesla T4 not as a server requirement, but as a hardware proxy to simulate the estimated compute capability of a flagship mobile NPU in 2030.
 
 *Based on our technical research and projection models*:
@@ -65,7 +64,7 @@ Technique: FP16 VAE with Sliced Decoding.
 This project utilizes a Training-Free approach. It leverages pre-trained weights from Stability AI and Destitech, applying inference-time optimizations to achieve performance goals.
 - Inference data: Accepts standard image formats (JPG, PNG) and binary masks.
 
-## The 2030 Compute Proxy: Why Tesla T4?
+## Compute Proxy: Tesla T4
 To address the challenge's requirement for a lightweight, mobile-first editor, we utilized the NVIDIA Tesla T4 as a hardware proxy for the estimated compute capability of a flagship mobile NPU in 2030
 
 - **Current State (2024)**: High-end mobile NPUs (e.g., A17 Pro, Snapdragon 8 Gen 3) reach ~35-45 TOPS (Trillions of Operations Per Second)
