@@ -59,10 +59,8 @@ flowchart LR
 	A[Client] --> B[FastAPI Server]
 	B -->|decode| C[Image + Mask]
 	B -->|route| D[EditingPipelines]
-	D -->|inpaint| E[SDXL + ControlNet]
-	D -->|optional| F[SDXL Img2Img Vibe Match]
-	E --> G[Result]
-	F --> G
+    D -->|inpaint| E[SDXL + ControlNet]
+    E --> G[Result]
 	G --> H[PNG Response]
 ```
 
@@ -70,30 +68,7 @@ flowchart LR
 
 | Component | Role | Precision | Notes |
 |---|---|---|---|
- 
-        Attn1 -->|ToMe merges tokens| Down2[DownBlock 2 Conv ResNet]
-        Down2 --> Attn2[Self-Attention Cross-Attention]
-        Attn2 --> Down3[DownBlock 3 Bottleneck]
-        
-        Down3 --> Mid[MidBlock ResNet Attention]
-        
-        Mid --> Up3[UpBlock 3 TransposeConv]
-        Down2 -.skip.-> Up3
-        Up3 --> Attn3[Self-Attention Cross-Attention]
-        Attn3 --> Up2[UpBlock 2 TransposeConv]
-        Down1 -.skip.-> Up2
-        Up2 --> Attn4[Self-Attention Cross-Attention]
-        Attn4 --> Up1[UpBlock 1 Output Conv]
-        
-        Up1 --> Output[Denoised Latent zt-1 4x128x128]
-    end
-    
-    Prompt[Text Prompt] --> TE1[Text Encoder 1<br/>CLIP ViT-L/14<br/>NF4 Quantized]
-    Prompt --> TE2[Text Encoder 2<br/>CLIP ViT-bigG/14<br/>NF4 Quantized]
-    TE1 --> Concat[Concatenate<br/>Embeddings]
-    TE2 --> Concat
-    Concat -.cross-attention.-> Attn1 & Attn2 & Attn3 & Attn4
-```
+
 
 **Key Components**:
 - **DownBlocks**: Convolutional layers that reduce spatial dimensions (128→64→32)
@@ -230,7 +205,7 @@ Trailing spacing allocates more compute to final denoising steps where perceptua
 
  
 
---- Memory Footprint Analysis
+- Memory Footprint Analysis
 
 | Component | Precision | Size (approx) | % of Total VRAM | Mitigation |
 |---|---|---|---|---|
