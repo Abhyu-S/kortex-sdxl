@@ -116,7 +116,7 @@ flowchart TB
         AddTime --> CondVec[Conditioning Vector]
     end
     
-    FinalEmb -[cross-attention]-> UNet[UNet Cross-Attention Layers]
+    FinalEmb --> UNet[UNet Cross-Attention Layers]
     CondVec --> UNet
 ```
 
