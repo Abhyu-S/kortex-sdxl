@@ -19,7 +19,6 @@ The system assembles SDXL components with an fp16 VAE and applies aggressive but
 - [Deployment Guide](#deployment-guide)
 - [Testing & Validation](#testing--validation)
 - [Extensibility](#extensibility)
-- [Recommendations](#Recommendations)
 - [Development Journey](#development-journey-summary)
 - [Future Scope](#future-scope)
 - [Quick Links](#quick-links)
@@ -187,7 +186,7 @@ flowchart TB
         AddTime --> CondVec[Conditioning Vector]
     end
     
-    FinalEmb -.cross-attention.-> UNet[UNet Cross-Attention Layers]
+    FinalEmb -[cross-attention]-> UNet[UNet Cross-Attention Layers]
     CondVec --> UNet
 ```
 
@@ -373,87 +372,9 @@ flowchart TD
 3. Merge via weighted average based on attention scores
 4. After processing, tokens are "unmerged" to restore spatial structure
 
-### NF4 Quantization Mechanism
-
-```mermaid
-flowchart LR
-    subgraph Standard fp16 Storage
-        W1[Weights<br/>fp16<br/>2 bytes/param] --> GPU1[GPU Memory<br/>~10 GB for UNet]
-    end
-    
-    subgraph NF4 Quantization
-        W2[Weights<br/>fp16] --> Q[Quantize to<br/>4-bit NF4<br/>learned codebook]
-        Q --> Store[Compressed<br/>0.5 bytes/param]
-        Store --> DQ[Dequantize to<br/>fp16 on-the-fly]
-        DQ --> Compute[Compute in<br/>fp16]
-    end
-    
-    subgraph Result
-        Compute --> GPU2[GPU Memory<br/>~2.5 GB for UNet<br/>75% reduction]
-    end
-```
-
-**NF4 (Normal Float 4-bit)**:
-- Uses a learned codebook based on normal distribution of weights
-- Asymmetric quantization preserves precision for important weight ranges
-- Double quantization: quantizes the quantization constants for extra compression
-- Dequantization happens during forward pass, compute remains fp16
-
-### Cross-Attention Mechanism: Text-to-Image Guidance
-
-### Classifier-Free Guidance (CFG) Process
-
-### Noise Schedule Visualization
-
-Cross-attention allows text embeddings to influence image generation at the pixel level.
-
-```mermaid
-flowchart TB
-    subgraph Spatial Features from UNet
-        Latent["Latent Features h<br/>B×C×H×W"] --> Reshape["Reshape to<br/>B×(H*W)×C"]
-        Reshape --> QProj["Query Projection<br/>Linear(C, D)"]
-        QProj --> Q["Queries Q<br/>B×(H*W)×D"]
-    end
-    
-    subgraph Text Embeddings
-        Text["Text Embeddings<br/>B×77×2048"] --> KProj["Key Projection<br/>Linear(2048, D)"]
-        Text --> VProj["Value Projection<br/>Linear(2048, D)"]
-        KProj --> K["Keys K<br/>B×77×D"]
-        VProj --> V["Values V<br/>B×77×D"]
-    end
-    
-    subgraph Attention Computation
-        Q --> MatMul1["Q × K^T<br/>B×(H*W)×77"]
-        K --> MatMul1
-        MatMul1 --> Scale["Scale by<br/>1/√D"]
-        Scale --> Softmax["Softmax<br/>Attention Weights"]
-        Softmax --> Attn["Attention Map<br/>B×(H*W)×77"]
-    end
-    
-    subgraph Output
-        Attn --> MatMul2["Attn × V<br/>Weighted sum of text features"]
-        V --> MatMul2
-        MatMul2 --> Out["Output Features<br/>B×(H*W)×D"]
-        Out --> Reshape2["Reshape to<br/>B×D×H×W"]
-        Reshape2 --> Final["Attended Features<br/>+ Residual Connection"]
-    end
-```
-
-**Attention Visualization**:
-For a pixel at position (i,j), the attention weights `Attn[i,j,:]` show which words from the prompt most influence that pixel:
-- "futuristic" → high attention on building edges
-- "sunset" → high attention on sky regions
+ 
 - "city" → high attention across spatial extent
 
-**Mathematical Formulation**:
-```
-Attention(Q, K, V) = softmax(QK^T / √d_k) V
-
-Where:
-- Q ∈ ℝ^(HW×D): queries from image features
-- K, V ∈ ℝ^(77×D): keys/values from text embeddings
-- d_k = D: scaling factor to stabilize gradients
-- Output ∈ ℝ^(HW×D): text-guided image features
 ```
 
 ### Classifier-Free Guidance (CFG) Process
