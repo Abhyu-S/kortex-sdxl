@@ -2,7 +2,34 @@
 
 This repository contains a high-efficiency generative fill and image harmonization system powered by Stable Diffusion XL (SDXL) and ControlNet. It implements advanced optimization techniques to run heavy diffusion pipelines with reduced latency and memory footprint.The system allows users to perform complex image editing tasks - such as object replacement, background generation, and sticker harmonization - while maintaining photometric consistency through a "Vibe Match" mechanism.
 
-## Vision: The 2030 Compute Proxy
+## Table of Contents
+1. [The Compute](#the-compute)
+2. [Core Optimizations (Lightweight Architecture)](#core-optimizations-lightweight-architecture)
+    * [4-bit NF4 Quantization](#4-bit-nf4-quantization)
+    * [Token Merging (ToMe)](#token-merging-tome)
+    * [Precision Management](#precision-management)
+    * [Features & Workflows](#features--workflows)
+    * [Project Structure](#project-structure)
+3. [Datasets](#datasets)
+4. [The Tesla T4](#the-tesla-t4)
+5. [Getting Started](#getting-started)
+    * [Simulation Environment (Prerequisites)](#simulation-environment-prerequisites)
+    * [Installation](#installation)
+6. [API Usage](#api-usage)
+    * [1. Smart Fill (Generative Fill)](#1-smart-fill-generative-fill)
+    * [2. Harmonization](#2-harmonization)
+7. [File Explanations](#file-explanations)
+8. [Optimizations](#optimizations)
+9. [Compute Profiles](#compute-profiles)
+    * [Executive Summary](#executive-summary)
+    * [1. Consolidated Compute Summary Table](#1-consolidated-compute-summary-table)
+    * [2. Workload Profiles](#2-workload-profiles)
+    * [3. Optimization Recommendations](#3-optimization-recommendations)
+10. [Citations](#citations)
+
+---
+
+## The Compute
 To address the challenge's requirement for a mobile-first editor operating on limited compute, we utilized the NVIDIA Tesla T4 not as a server requirement, but as a hardware proxy to simulate the estimated compute capability of a flagship mobile NPU in 2030.
 
 *Based on our technical research and projection models*:
@@ -14,12 +41,10 @@ To address the challenge's requirement for a mobile-first editor operating on li
 
 - The Hardware Proxy: The NVIDIA Tesla T4 provides approximately 65 TOPS (Int8) and 8.1 TFLOPS (FP32).
 
-Conclusion: By optimizing Stable Diffusion XL (SDXL) to run locally on a T4, we demonstrate a workload that is mathematically feasible on a 2030 edge device without reliance on cloud inference, adhering to the challenge's low-latency (<10s) and privacy requirements.
+*Conclusion*: By optimizing Stable Diffusion XL (SDXL) to run locally on a T4, we demonstrate a workload that is mathematically feasible on a 2030 edge device without reliance on cloud inference, adhering to the challenge's low-latency (<10s) and privacy requirements.
 
 ## Core Optimizations (Lightweight Architecture)
 We implement a "Software-First" optimization strategy to fit foundation models into constrained mobile environments (approx. 16-24GB Unified RAM projected for 2030 flagships).
-
-
 
 1. 4-bit NF4 Quantization
 Technique: We utilize Normal Float 4 (NF4) quantization via bitsandbytes.
@@ -65,7 +90,7 @@ Technique: FP16 VAE with Sliced Decoding.
 This project utilizes a Training-Free approach. It leverages pre-trained weights from Stability AI and Destitech, applying inference-time optimizations to achieve performance goals.
 - Inference data: Accepts standard image formats (JPG, PNG) and binary masks.
 
-## The 2030 Compute Proxy: Why Tesla T4?
+## The Tesla T4
 To address the challenge's requirement for a lightweight, mobile-first editor, we utilized the NVIDIA Tesla T4 as a hardware proxy for the estimated compute capability of a flagship mobile NPU in 2030
 
 - **Current State (2024)**: High-end mobile NPUs (e.g., A17 Pro, Snapdragon 8 Gen 3) reach ~35-45 TOPS (Trillions of Operations Per Second)
