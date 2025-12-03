@@ -8,6 +8,7 @@ The system assembles SDXL components with an fp16 VAE and applies aggressive but
 
 ## Table of Contents
 - [Overview](#overview)
+- [Mathematical modelling: The 2030 Compute](#mathematical-modelling-the-2030-compute)
 - [Architecture](#architecture)
 - [Components and Responsibilities](#components-and-responsibilities)
 - [How It Works](#how-it-works)
@@ -36,6 +37,38 @@ The system assembles SDXL components with an fp16 VAE and applies aggressive but
     - Two-pass Smart Fill: Fill then optional Vibe Match for lighting/style alignment.
     - Simple, reliable FastAPI endpoints; built-in telemetry via Weights & Biases (optional).
 - Target hardware: 16GB-class GPUs (e.g., Tesla T4); supports CPU fallback with reduced performance.
+
+### Mathematical modelling: The 2030 Compute
+
+To validate the decision of using the NVIDIA Tesla T4 as a proxy for 2030 mobile hardware, we employed a quantitative forecasting model based on historical Mobile NPU scaling trends (2017-2024).
+
+#### 1. The Growth Model
+We model the Neural Processing Unit (NPU) performance ($P$) at year $y$ using an exponential growth function starting from a hard baseline in 2024.
+
+$$P_y = P_{base} \times (1 + r)^{(y - 2024)}$$
+
+Where:
+* **$P_{base}$**: The baseline performance in 2024, established at **40 TOPS** (Trillions of Operations Per Second). [cite_start]This represents the industry midpoint between the Apple A17 Pro (35 TOPS) and Qualcomm Snapdragon 8 Gen 3 (45 TOPS)[cite: 39, 40, 183].
+* **$r$**: The Compound Annual Growth Rate (CAGR) of NPU efficiency.
+* **$y$**: The target projection year (2030).
+
+#### 2. Scaling Scenarios
+[cite_start]We projected three scaling scenarios for the 6-year horizon (2024–2030)[cite: 187]:
+
+| Scenario | Growth Rate ($r$) | Rationale | 2030 Projection ($P_{2030}$) |
+| :--- | :--- | :--- | :--- |
+| **Conservative** | 10% | Constraints on thermal envelope and power draw limit scaling. | ~71 TOPS |
+| **Realistic** | **20%** | Continued architectural improvements (N2/A14 process nodes). | **~120 TOPS** |
+| **Optimistic** | 30% | Aggressive low-precision marketing (INT2/INT4) counting. | ~193 TOPS |
+
+#### 3. Hardware Mapping (T4 vs. Mobile 2030)
+[cite_start]Our project targets the **Realistic Scenario**, projecting that flagship mobile processors in 2030 will deliver approximately **100-120 TOPS** of INT8 inference performance[cite: 190, 396].
+
+The **NVIDIA Tesla T4**, widely used in this project's server simulation, offers:
+* **~65 TOPS (INT8)**
+* **~8.1 TFLOPS (FP32)**
+
+By optimizing our SDXL pipeline (via 4-bit NF4 quantization and Token Merging) to run efficiently on the T4, we effectively demonstrate a workload that will fit comfortably within the thermal and compute budget of a high-end mobile device in 2030.
 
 ## Architecture
 
