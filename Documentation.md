@@ -17,8 +17,6 @@ The system assembles SDXL components with an fp16 VAE and applies aggressive but
 - [Performance Analysis](#performance-analysis)
 - [Deployment Guide](#deployment-guide)
 - [Testing & Validation](#testing--validation)
-- [Extensibility](#extensibility)
-- [Development Journey](#development-journey-summary)
 - [Future Scope](#future-scope)
 - [Quick Links](#quick-links)
 - [References & Citations](#references--citations)
@@ -497,14 +495,6 @@ Notes: GPU recommended; CPU works but is slow. Ensure sufficient disk space for 
  
 
  
-
-## Development Journey (Summary)
-- From baseline SDXL to quantized (NF4) + pruned (ToMe) pipelines for constrained GPUs.
-- Edge-only harmonization with cropped processing and safe odd kernel widths for filters.
-- Resource monitor + W&B logging to illuminate latency and utilization.
-- Stable scheduling via `timestep_spacing="trailing"` and refined default prompts.
-
----
 
 ## Future Scope
 - Multi-resolution tiling for ultra-high-res edits
