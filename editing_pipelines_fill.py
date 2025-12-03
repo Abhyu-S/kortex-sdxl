@@ -141,7 +141,7 @@ class EditingPipelines:
             torch_dtype=torch.float16
         )
         vae.to(self.device)
-        vae.enable_slicing() 
+        vae.enable_slicing() # fits in the VRAM
 
         # Load Tokenizers
         print("... Loading Tokenizers")
@@ -176,7 +176,7 @@ class EditingPipelines:
         )
 
         # 4. PRUNING: Reduced ratio for better quality
-        apply_token_pruning(self.inpaint_pipe, ratio=0.4)
+        apply_token_pruning(self.inpaint_pipe, ratio=0.15)
 
         # 5. Assemble Img2Img Pipeline
         print("... Assembling Img2Img Pipeline")
@@ -351,10 +351,7 @@ class EditingPipelines:
             width, height = image.size
             border_width = 41
             
-            # --- OPTIMIZATION START: Fast BBox Calculation ---
-            # Instead of filtering the 4K image, we downscale the mask to calculate the BBox
-            # This turns the 5-minute CPU wait into 0.1 seconds.
-            
+            # BBox calculation
             analysis_scale = 1024 / max(width, height)
             
             if analysis_scale < 1.0:
@@ -363,7 +360,6 @@ class EditingPipelines:
                 h_small = int(height * analysis_scale)
                 mask_small = mask.resize((w_small, h_small), Image.Resampling.NEAREST)
                 
-                # --- FIX IS HERE ---
                 # Calculate scaled border
                 scaled_border = int(border_width * analysis_scale)
                 
@@ -374,8 +370,7 @@ class EditingPipelines:
                     border_small = scaled_border + 1 # Turn 10 into 11
                 else:
                     border_small = scaled_border
-                # -------------------
-
+                
                 # Fast Filter on small mask
                 mask_dilated_small = mask_small.filter(ImageFilter.MaxFilter(border_small))
                 bbox_small = mask_dilated_small.getbbox()
@@ -399,8 +394,7 @@ class EditingPipelines:
                 bbox = mask_dilated.getbbox()
                 if not bbox: return image
 
-            # --- OPTIMIZATION END ---
-
+        
             padding = 128
             crop_box = (
                 max(0, bbox[0]-padding), 
@@ -418,10 +412,10 @@ class EditingPipelines:
             mask_dilated_crop = mask_crop.filter(ImageFilter.MaxFilter(border_width))
             mask_eroded_crop = mask_crop.filter(ImageFilter.MinFilter(border_width))
             
-            # FIX 1: Smooth alpha transitions
+            # Smooth alpha transitions
             edge_mask = ImageChops.difference(mask_dilated_crop, mask_eroded_crop).filter(ImageFilter.GaussianBlur(20))
             
-            # FIX 2: Resize for Inference
+            # Resize for Inference
             work_image = image_crop.convert("RGB").resize(process_size, Image.Resampling.LANCZOS)
             work_mask = edge_mask.convert("L").resize(process_size, Image.Resampling.NEAREST)
             original_crop_size = image_crop.size
