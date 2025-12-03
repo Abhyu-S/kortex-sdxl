@@ -43,6 +43,8 @@ To address the challenge's requirement for a mobile-first editor operating on li
 
 *Conclusion*: By optimizing Stable Diffusion XL (SDXL) to run locally on a T4, we demonstrate a workload that is mathematically feasible on a 2030 edge device without reliance on cloud inference, adhering to the challenge's low-latency (<10s) and privacy requirements.
 
+For  our mathematical model, kindly read - [Documentation](Documentation.md)
+
 ## Core Optimizations (Lightweight Architecture)
 We implement a "Software-First" optimization strategy to fit foundation models into constrained mobile environments (approx. 16-24GB Unified RAM projected for 2030 flagships).
 
