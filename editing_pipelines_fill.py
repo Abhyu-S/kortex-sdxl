@@ -227,7 +227,7 @@ class EditingPipelines:
             latency = time.time() - start_time
             print(f"[{step_name}] Latency: {latency:.4f}s (CPU)")
 
-    def run_smart_fill(self, image, mask, prompt, vibe_strength=0.1):
+    def run_smart_fill(self, image, mask, prompt, vibe_strength=0):
         print(f"Running Smart Fill: '{prompt}'")
         w, h = image.size
         
