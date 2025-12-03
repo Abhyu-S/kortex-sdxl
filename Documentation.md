@@ -529,23 +529,6 @@ flowchart LR
 
  
 
-### Attention Path Pruning Map
-
-```mermaid
-flowchart TD
-        classDef keep fill:#a3f3a3,stroke:#333,stroke-width:1px,color:#111
-        classDef prune fill:#f7c6c6,stroke:#333,stroke-width:1px,color:#111
-
-        subgraph Down Blocks
-            D_attn1[Attn Block 1]:::keep --> D_attn2[Attn Block 2]:::prune --> D_attn3[Attn Block 3 Last]:::keep
-        end
-        subgraph Mid Block
-            M_attn[Mid Attn]:::keep
-        end
-        subgraph Up Blocks
-            U_attn1[Attn Block 1]:::keep --> U_attn2[Attn Block 2]:::prune --> U_attn3[Attn Block 3 Last]:::keep
-        end
-```
 
 ## Quick Links
 - API docs: `http://localhost:8080/docs`
@@ -629,13 +612,6 @@ sequenceDiagram
 
 ### Harmonization Workflow (Detailed)
 
-| Step | Operation | Inputs | Key Params | Output |
-|---|---|---|---|---|
-| 1 | BBox on downscaled mask | mask | odd MaxFilter border (>=3) | bbox |
-| 2 | Crop image + mask | image, mask | padding ~128 | cropped region |
-| 3 | Edge-only mask | crop | MaxFilter/MinFilter + GaussBlur ~20 | smooth edge mask |
-| 4 | Inpaint crop | work size ~768x768 | steps ~15, guidance ~2.5 | harmonized crop |
-| 5 | Paste back | crop result | alpha from RGBA | final image |
 
 ```mermaid
 flowchart LR
