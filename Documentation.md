@@ -18,9 +18,8 @@ The system assembles SDXL components with an fp16 VAE and applies aggressive but
 - [Performance Analysis](#performance-analysis)
 - [Deployment Guide](#deployment-guide)
 - [Testing & Validation](#testing--validation)
-- [Security and Hardening](#security-and-hardening)
 - [Extensibility](#extensibility)
-- [Known Limitations and Recommendations](#known-limitations-and-recommendations)
+- [Recommendations](#Recommendations)
 - [Development Journey](#development-journey-summary)
 - [Future Scope](#future-scope)
 - [Quick Links](#quick-links)
@@ -189,7 +188,7 @@ flowchart TB
     end
     
     FinalEmb -.cross-attention.-> UNet[UNet Cross-Attention Layers]
-    CondVec -.add to.-> UNet
+    CondVec --> UNet
 ```
 
  
@@ -223,12 +222,6 @@ flowchart TB
     Scale2 -.add residual.-> UA2
     Scale3 -.add residual.-> UA3
 ```
-
-**How It Works**:
-1. ControlNet encoder processes original image + mask to extract structural features
-2. Features are scaled by `controlnet_conditioning_scale` (0.5 in our implementation)
-3. Scaled features are added as residuals to UNet decoder layers
-4. This preserves structure from the control image while allowing creative fill
 
 ---
 
@@ -320,10 +313,6 @@ Trailing spacing allocates more compute to final denoising steps where perceptua
 - Faster steps → reduced end-to-end latency.
 - No training required → pure inference-time optimization.
 
-### Limitations
-- Minor detail loss possible (micro-texture) with ToMe at higher ratios.
-- Quantization may introduce small deviations; extreme precision-sensitive tasks may prefer fp16 weights.
-- CPU-only runs remain slow; techniques mainly benefit GPU throughput.
 
 ### Future Scope
 - Adaptive ToMe ratio per-layer/token density.
