@@ -621,80 +621,17 @@ curl -Method POST "http://localhost:8080/harmonize" -Form image=@"C:\img\composi
 
 ### Troubleshooting
 
-| Symptom | Likely Cause | Fix |
-|---|---|---|
-| CUDA OOM | VRAM pressure | Reduce steps; ensure 4-bit; tighten mask; close other GPU apps |
-| Slow 1st run | Model downloads | Let first pass finish; cache persists |
-| Edits spill | Loose mask | Refine mask edges; white=edit |
-| Lighting off | Vibe too low/high | Tune `vibe_strength` 0.2 to 0.4 |
-| No GPU | Driver/CUDA/Torch mismatch | Install correct Torch CUDA build; verify `nvidia-smi` |
+<!-- removed per request -->
 
 ## SDXL Architecture Overview
 
-### SDXL vs Stable Diffusion 1.5 Comparison
-
-```mermaid
-flowchart TB
-    subgraph SD 1.5 Pipeline
-        T1_15["Single Text Encoder<br/>CLIP ViT-L/14<br/>768-d embeddings"] --> U1_15["UNet<br/>860M params<br/>512×512 training"]
-        U1_15 --> V1_15["VAE<br/>4×64×64 latents"]
-        V1_15 --> Out1_15["512×512 Image"]
-    end
-    
-    subgraph SDXL Pipeline kortex implementation
-        T1_XL["Text Encoder 1<br/>CLIP ViT-L/14<br/>768-d"] --> Concat_XL["Concat<br/>2048-d total"]
-        T2_XL["Text Encoder 2<br/>CLIP ViT-bigG/14<br/>1280-d"] --> Concat_XL
-        Concat_XL --> U1_XL["UNet<br/>2.6B params<br/>1024×1024 training<br/>+ ControlNet guidance"]
-        U1_XL --> V1_XL["VAE fp16-fix<br/>4×128×128 latents"]
-        V1_XL --> Out1_XL["1024×1024 Image"]
-    end
-    
-    subgraph Optimizations Applied
-        T1_XL -.4-bit NF4.-> T1_XL
-        T2_XL -.4-bit NF4.-> T2_XL
-        U1_XL -.4-bit NF4.-> U1_XL
-        U1_XL -.ToMe 40%.-> U1_XL
-        V1_XL -.slicing.-> V1_XL
-    end
-```
-
-**Key SDXL Improvements**:
-| Feature | SD 1.5 | SDXL | Benefit |
-|---------|--------|------|--------|
-| Text Encoders | 1 (CLIP ViT-L) | 2 (ViT-L + ViT-bigG) | Richer semantic understanding |
-| UNet Size | 860M params | 2.6B params | Better detail and coherence |
-| Training Resolution | 512x512 | 1024x1024 | Native high-res generation |
-| Latent Size | 4x64x64 | 4x128x128 | More spatial information |
-| Conditioning | Text only | Text + Size + Crop coords | Aspect ratio awareness |
-| VRAM (unoptimized) | ~4-6 GB | ~18-22 GB | Requires optimization |
-| **VRAM (our stack)** | - | **~7 GB** | **Via NF4 + ToMe** |
+<!-- removed per request -->
 
 ## Components and Responsibilities
-- `FastAPI` (in `server.py`):
-    - Handles upload, decoding, routing, and PNG responses.
-    - Endpoints: `GET /`, `GET /health`, `POST /generative-fill`, `POST /smart-fill`, `POST /harmonize`.
-- `EditingPipelines` (in `editing_pipelines_fill.py`):
-    - **The Brain**: Loads SDXL components (UNet, text encoders, tokenizer, scheduler) and ControlNet (inpaint-dreamer) with fp16 VAE.
-    - Applies 4-bit NF4 quantization (UNet + text encoders) and ToMe pruning (ratio≈0.4).
-    - Implements `run_smart_fill` and `run_harmonize_sticker` with resource monitoring + optional W&B logging.
-    - **ResourceMonitor**: A background thread that tracks RAM and CPU usage during inference.
-    - **run_smart_fill**: Orchestrates the generation process using ControlNet and SDXL.
-    - **run_harmonize_sticker**: Handles bounding box extraction and edge-focused inpainting for faster processing (768×768 crop).
-- `quantization_utils.py`: Contains the BitsAndBytesConfig setup. Configures the model to load in 4-bit NF4 (Normal Float 4) precision with double quantization, drastically reducing the memory footprint of the SDXL UNet and Text Encoders.
-- `pruning_utils.py`: Implements Token Merging (ToMe). Applies dynamic structural pruning to the attention mechanism, removing approximately 40% of redundant tokens during the forward pass to speed up inference.
 
----
-
- 
+<!-- removed per request -->
 
 ### Smart Fill Workflow (Detailed)
-
-| Step | Operation | Inputs | Key Params | Output |
-|---|---|---|---|---|
-| 1 | Decode + resize | image, mask | work size 1024x1024 | RGB image, L mask |
-| 2 | Generative Fill (inpaint) | image, mask, control=image | steps ~30, guidance ~7.5, control scale ~0.5 | Filled image |
-| 3 | Optional Vibe Match | filled image | `vibe_strength` 0.2 to 0.4, steps >=30, guidance ~2.5 | Relit image |
-| 4 | Resize back | relit/filled | original dims | Final PNG |
 
 ```mermaid
 sequenceDiagram
@@ -703,15 +640,13 @@ sequenceDiagram
     participant Pipe as EditingPipelines
     participant CN as ControlNet Inpaint
     participant SD as SDXL UNet
-    participant VI as Img2Img
     UI->>API: Upload image+mask+prompt
     API->>Pipe: run_smart_fill(img, mask, prompt, vibe)
     Pipe->>CN: control(image, mask)
     CN->>SD: guided inpaint steps
     SD-->>Pipe: filled image
     alt vibe_strength>0
-        Pipe->>VI: img2img(strength=vibe)
-        VI-->>Pipe: relit image
+        Note over Pipe,SD: Vibe Match applied (details removed)
     end
     Pipe-->>API: final image
     API-->>UI: PNG bytes
