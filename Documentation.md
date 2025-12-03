@@ -4,15 +4,11 @@ This is a production-ready image editing service built on Stable Diffusion XL (S
 1. Text-guided Generative Fill to synthesize content within a mask while preserving structure, and
 2. Edge-aware Harmonization to blend pasted or moved objects into a scene.
 
-The system assembles SDXL components with an fp16 VAE and applies aggressive but quality-preserving optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then *optionally* performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar) but supports CPU fallback with significantly higher latency.
+The system assembles SDXL components with an fp16 VAE and applies aggressive but quality-preserving optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar) but supports CPU fallback with significantly higher latency.
 
 ## Table of Contents
 - [Overview](#overview)
 - [Architecture](#architecture)
-- [Components and Responsibilities](#components-and-responsibilities)
-- [How It Works](#how-it-works)
-- [API Reference](#api-reference)
-- [Parameter Space and Constraints](#parameter-space-and-constraints)
 - [Mathematical Computations](#mathematical-computations)
 - [Performance Analysis](#performance-analysis)
 - [Deployment Guide](#deployment-guide)
@@ -577,38 +573,7 @@ curl -Method POST "http://localhost:8080/smart-fill" -Form image=@"C:\img\source
 curl -Method POST "http://localhost:8080/harmonize" -Form image=@"C:\img\composite.png" -Form mask=@"C:\img\sticker_mask.png" --output composite_h.png
 ```
 
-### Troubleshooting
-
-<!-- removed per request -->
-
-## SDXL Architecture Overview
-
-<!-- removed per request -->
-
-## Components and Responsibilities
-
-<!-- removed per request -->
-
-### Smart Fill Workflow (Detailed)
-
-```mermaid
-sequenceDiagram
-    participant UI as Client UI
-    participant API as FastAPI
-    participant Pipe as EditingPipelines
-    participant CN as ControlNet Inpaint
-    participant SD as SDXL UNet
-    UI->>API: Upload image+mask+prompt
-    API->>Pipe: run_smart_fill(img, mask, prompt, vibe)
-    Pipe->>CN: control(image, mask)
-    CN->>SD: guided inpaint steps
-    SD-->>Pipe: filled image
-    alt vibe_strength>0
-        Note over Pipe,SD: Vibe Match applied (details removed)
-    end
-    Pipe-->>API: final image
-    API-->>UI: PNG bytes
-```
+<!-- Streamlined: removed deprecated sections and detailed sequence -->
 
 ### Harmonization Workflow (Detailed)
 
