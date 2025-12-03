@@ -72,49 +72,7 @@ flowchart LR
 
 | Component | Role | Precision | Notes |
 |---|---|---|---|
-| UNet (SDXL) | Denoising backbone | 4-bit NF4 weights, fp16 compute | Quantized via BitsAndBytes; majority of VRAM footprint |
-| Text Encoder 1 (CLIP) | Prompt conditioning | 4-bit NF4, fp16 compute | Encodes base text tokens |
-| Text Encoder 2 (CLIP+Proj) | Enhanced conditioning | 4-bit NF4, fp16 compute | Projection improves SDXL text-image alignment |
-| VAE (fp16 fix) | Latent to Image | fp16 | `vae.enable_slicing()` for memory-friendly decode |
-| ControlNet (Inpaint Dreamer) | Structure guidance | fp16 | Driven by source image and mask for coherent fill |
-| Scheduler (EulerDiscrete) | Step update rule | N/A | `timestep_spacing="trailing"` for stability |
-
-```mermaid
-flowchart TB
-	subgraph Pipelines
-		U[UNet NF4 fp16]
-		T1[TextEncoder1 NF4 fp16]
-		T2[TextEncoder2 NF4 fp16]
-		V[VAE fp16]
-		Cn[ControlNet fp16]
-		Sch[Scheduler]
-	end
-	T1 --> U
-	T2 --> U
-	Cn --> U
-	U --> V
-	Sch --> U
-```
-
-```mermaid
-flowchart LR
-    Img[Input Image] -- mask --> Cn
-    Cn -- control --> U
-    Prompt -- tokenizers --> T1 & T2
-    T1 & T2 --> U
-    U -- latents --> V
-    V --> Out[Output Image]
-```
-
-### Deep Learning Architecture: SDXL UNet Structure
-
-The UNet is the core denoising engine. It processes latent representations through a series of downsampling and upsampling blocks with skip connections.
-
-```mermaid
-flowchart TD
-    subgraph UNet Architecture
-        Input[Noisy Latent zt 4x128x128] --> Down1[DownBlock 1 Conv ResNet]
-        Down1 --> Attn1[Self-Attention Cross-Attention with Text Embeddings]
+ 
         Attn1 -->|ToMe merges tokens| Down2[DownBlock 2 Conv ResNet]
         Down2 --> Attn2[Self-Attention Cross-Attention]
         Attn2 --> Down3[DownBlock 3 Bottleneck]
@@ -397,49 +355,6 @@ flowchart LR
 - Double quantization: quantizes the quantization constants for extra compression
 - Dequantization happens during forward pass, compute remains fp16
 
-### Noise Schedule Visualization
-
-Cross-attention allows text embeddings to influence image generation at the pixel level.
-
-```mermaid
-flowchart TB
-    subgraph Spatial Features from UNet
-        Latent["Latent Features h<br/>B×C×H×W"] --> Reshape["Reshape to<br/>B×(H*W)×C"]
-        Reshape --> QProj["Query Projection<br/>Linear(C, D)"]
-        QProj --> Q["Queries Q<br/>B×(H*W)×D"]
-    end
-    
-    subgraph Text Embeddings
-        Text["Text Embeddings<br/>B×77×2048"] --> KProj["Key Projection<br/>Linear(2048, D)"]
-        Text --> VProj["Value Projection<br/>Linear(2048, D)"]
-        KProj --> K["Keys K<br/>B×77×D"]
-        VProj --> V["Values V<br/>B×77×D"]
-    end
-    
-    subgraph Attention Computation
-        Q --> MatMul1["Q × K^T<br/>B×(H*W)×77"]
-        K --> MatMul1
-        MatMul1 --> Scale["Scale by<br/>1/√D"]
-        Scale --> Softmax["Softmax<br/>Attention Weights"]
-        Softmax --> Attn["Attention Map<br/>B×(H*W)×77"]
-    end
-    
-    subgraph Output
-        Attn --> MatMul2["Attn × V<br/>Weighted sum of text features"]
-        V --> MatMul2
-        MatMul2 --> Out["Output Features<br/>B×(H*W)×D"]
-        Out --> Reshape2["Reshape to<br/>B×D×H×W"]
-        Reshape2 --> Final["Attended Features<br/>+ Residual Connection"]
-    end
-```
-
-**Attention Visualization**:
-For a pixel at position (i,j), the attention weights `Attn[i,j,:]` show which words from the prompt most influence that pixel:
-- "futuristic" → high attention on building edges
-- "sunset" → high attention on sky regions
-- "city" → high attention across spatial extent
-
-```
 
 ### Classifier-Free Guidance (CFG) Process
 
