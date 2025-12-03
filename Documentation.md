@@ -1,14 +1,9 @@
 # Image Editing with Stable Diffusion XL with Generative Fill and Harmonization
 
-Kortex-SDXL is a production-ready image editing service built on Stable Diffusion XL (SDXL) with ControlNet for inpainting. It provides two primary capabilities:
-1. text-guided Generative Fill to synthesize content within a mask while preserving structure
-2. edge-aware Harmonization to blend pasted or moved objects into a scene.
-
-The system assembles SDXL components with an fp16 VAE and applies aggressive but quality-preserving optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then optionally performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar (predicted to be 2030's compute)) but supports CPU fallback with significantly higher latency.
+This is a production-ready image editing service built on Stable Diffusion XL (SDXL) with ControlNet for inpainting. It provides two primary capabilities: (1) text-guided Generative Fill to synthesize content within a mask while preserving structure, and (2) edge-aware Harmonization to blend pasted or moved objects into a scene. The system assembles SDXL components with an fp16 VAE and applies aggressive but quality-preserving optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then optionally performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar) but supports CPU fallback with significantly higher latency.
 
 ## Table of Contents
 - [Overview](#overview)
-- [Mathematical modelling: The 2030 Compute](#mathematical-modelling-the-2030-compute)
 - [Architecture](#architecture)
 - [Components and Responsibilities](#components-and-responsibilities)
 - [How It Works](#how-it-works)
@@ -38,59 +33,16 @@ The system assembles SDXL components with an fp16 VAE and applies aggressive but
     - Simple, reliable FastAPI endpoints; built-in telemetry via Weights & Biases (optional).
 - Target hardware: 16GB-class GPUs (e.g., Tesla T4); supports CPU fallback with reduced performance.
 
-### Mathematical modelling: The 2030 Compute
+### The 2030 Compute Proxy: Why Tesla T4?
+To address the challenge's requirement for a lightweight, mobile-first editor, we utilized the NVIDIA Tesla T4 as a hardware proxy for the estimated compute capability of a flagship mobile NPU in 2030.
 
-To validate the decision of using the NVIDIA Tesla T4 as a proxy for 2030 mobile hardware, we employed a quantitative forecasting model based on historical Mobile NPU scaling trends (2017-2024).
+- **Current State (2024)**: High-end mobile NPUs (e.g., A17 Pro, Snapdragon 8 Gen 3) reach ~35-45 TOPS (Trillions of Operations Per Second).
+- **The 2030 Projection**: Extrapolating current NPU efficiency gains, mobile edge devices in 2030 are projected to exceed 100+ TOPS, rivaling the inference throughput of today's mid-range inference cards like the T4 (~65 TOPS Int8 / ~8 TFLOPS FP32).
+- **Our Approach**: By optimizing Stable Diffusion XL (SDXL) with 4-bit Quantization and Token Merging, we demonstrate that high-fidelity generative editing can run locally on this "2030-equivalent" compute profile without cloud dependency.
 
-#### 1. The Growth Model
-We model the Neural Processing Unit (NPU) performance ($P$) at year $y$ using an exponential growth function starting from a hard baseline in 2024.
-
-$$P_y = P_{base} \times (1 + r)^{(y - 2024)}$$
-
-Where:
-* **$P_{base}$**: The baseline performance in 2024, established at **40 TOPS** (Trillions of Operations Per Second). This represents the industry midpoint between the Apple A17 Pro (35 TOPS) and Qualcomm Snapdragon 8 Gen 3 (45 TOPS).
-    * Apple A17 trajectory.
-    * Snapdragon 8 Gen 3 performance.
-* **$r$**: The Compound Annual Growth Rate (CAGR) of NPU efficiency.
-* **$y$**: The target projection year (2030).
-
-#### 2. Scaling Scenarios
-We projected three scaling scenarios for the 6-year horizon (2024–2030):
-
-| Scenario | Growth Rate ($r$) | Rationale | 2030 Projection ($P_{2030}$) |
-| :--- | :--- | :--- | :--- |
-| **Conservative** | 10% | Constraints on thermal envelope and power draw limit scaling. | ~71 TOPS |
-| **Realistic** | **20%** | Continued architectural improvements (N2/A14 process nodes). *Source: Synopsys News Releases*. | **~120 TOPS** |
-| **Optimistic** | 30% | Aggressive low-precision marketing (INT2/INT4) counting. | ~193 TOPS |
-
-#### 3. Hardware Mapping (T4 vs. Mobile 2030)
-Our project targets the **Realistic Scenario**, projecting that flagship mobile processors in 2030 will deliver approximately **100-120 TOPS** of INT8 inference performance.
-
-The **NVIDIA Tesla T4**, widely used in this project's server simulation, offers:
-* **~65 TOPS (INT8)**
-* **~8.1 TFLOPS (FP32)**
-
-By optimizing our SDXL pipeline (via 4-bit NF4 quantization and Token Merging) to run efficiently on the T4, we effectively demonstrate a workload that will fit comfortably within the thermal and compute budget of a high-end mobile device in 2030.
-### References:
-- [Stanford's Artificial Intelligence Index Report 2025](https://hai.stanford.edu/ai-index/2025-ai-index-report)
-
-- [Stanford's Artificial Intelligence Index Report 2024](https://hai.stanford.edu/ai-index/2024-ai-index-report)
-
-- [Stanford's Artificial Intelligence Index Report 2023](https://hai.stanford.edu/ai-index/2023-ai-index-report)
-
-- [Stanford's Artificial Intelligence Index Report 2022](https://hai.stanford.edu/ai-index/2022-ai-index-report)
-
-- [Stanford's Artificial Intelligence Index Report 2021](https://hai.stanford.edu/ai-index/2021-ai-index-report)
-
-- [The state of AI in 2025: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/capabilities/quantumblack/our-insights/the-state-of-ai)
-
-- [The state of AI in 2024: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/capabilities/quantumblack/our-insights/the-state-of-ai-2024)
-
-- [The state of AI in 2023: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/capabilities/quantumblack/our-insights/the-state-of-ai-in-2023-generative-ais-breakout-year)
-
-- [The state of AI in 2022: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/~/media/mckinsey/business%20functions/quantumblack/our%20insights/the%20state%20of%20ai%20in%202022%20and%20a%20half%20decade%20in%20review/the-state-of-ai-in-2022-and-a-half-decade-in-review.pdf)
-
-- [The state of AI in 2021: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/capabilities/quantumblack/our-insights/global-survey-the-state-of-ai-in-2021)
+### Datasets
+This project utilizes a **Training-Free approach**. It leverages pre-trained weights from Stability AI and Destitech, applying inference-time optimizations to achieve performance goals.
+- **Inference data**: Accepts standard image formats (JPG, PNG) and binary masks.
 
 ## Architecture
 
@@ -263,7 +215,7 @@ flowchart TD
     VAE --> TOK[Load Tokenizers]
     TOK --> SCH[Configure Scheduler]
     SCH --> ASM1[Assemble Inpaint Pipeline]
-    ASM1 --> TOME[Apply ToMe Pruning ratio=0.15]
+    ASM1 --> TOME[Apply ToMe Pruning ratio=0.4]
     TOME --> ASM2[Assemble Img2Img Pipeline]
     ASM2 --> Ready[Server Ready]
     Ready --> Listen[Listen on :8080]
@@ -307,44 +259,7 @@ flowchart TB
 
 ---
 
-## Parameter Space and Constraints
-- `prompt` (string): richly describe desired content; include negatives like “blurry, watermark, distorted”.
-- `mask` (image): white = edit region; black = preserve. Internally resized to 1024x1024 (fill) or ~768x768 crops (harmonize).
-- `vibe_strength` (float [0.0, 1.0]): 0 disables; 0.2 to 0.4 recommended for visible, stable relighting.
-- Resolution: work resolution 1024x1024 for Smart Fill; outputs are resized back to original dims.
-- Trade-offs: more steps improve detail but increase latency; higher `vibe_strength` can drift from the base image.
-
-Suggested presets:
-
-| Task | Steps (Fill) | Vibe Strength | Notes |
-|------|--------------|---------------|-------|
-| Replace background | 30 | 0.3 | Coherent realism and style |
-| Add object | 30 | 0.2 | Maintains scene semantics |
-| Fast relight | 20 | 0.1 | Minimal drift, faster |
-| Harmonize edges | 15 | 0 | Crop-only, smooth seams |
-
-### Quality vs Speed Decision Tree
-
-Use this guide to select optimal parameters based on your priority:
-
-```mermaid
-flowchart TD
-    Start{Priority?} -->|Quality| Q1{Scene complexity?}
-    Start -->|Speed| S1{Acceptable quality?}
-    
-    Q1 -->|High detail| Q2["Steps: 35-40<br/>Vibe: 0.3-0.4<br/>Guidance: 7.5"]
-    Q1 -->|Moderate| Q3["Steps: 30<br/>Vibe: 0.2-0.3<br/>Guidance: 7.5"]
-    
-    S1 -->|Good enough| S2["Steps: 20-25<br/>Vibe: 0.1-0.2<br/>Guidance: 6.0"]
-    S1 -->|Minimum viable| S3["Steps: 15<br/>Vibe: 0.0<br/>Guidance: 5.0"]
-    
-    Q2 --> Exp["Expected: 15-18s<br/>Best for hero images"]
-    Q3 --> Exp2["Expected: 12-15s<br/>Recommended default"]
-    S2 --> Exp3["Expected: 8-10s<br/>Good for previews"]
-    S3 --> Exp4["Expected: 5-7s<br/>Rough drafts only"]
-```
-
----
+\
 
 ## Mathematical Computations
 - Diffusion: UNet predicts noise residuals per step; scheduler updates latent $z_t \to z_{t-1}$.
@@ -461,7 +376,7 @@ flowchart LR
 
 ### Techniques Applied
 - **Token Merging (ToMe) Pruning**
-    - Application: `tomesd.apply_patch(pipeline, ratio=0.15)` merges redundant attention tokens at inference.
+    - Application: `tomesd.apply_patch(pipeline, ratio=0.4)` merges redundant attention tokens at inference.
     - Effect: Reduces attention compute with minimal quality loss; speeds up denoising passes.
     - Citation: ToMe — https://github.com/facebookresearch/ToMe
 - **BitsAndBytes 4-bit NF4 Quantization**
@@ -502,7 +417,7 @@ flowchart LR
 | Optimization | VRAM Reduction | Speed Gain | Implementation Complexity | Quality Impact |
 |---|---|---|---|---|
 | 4-bit NF4 Quantization | ~55-60% | Moderate (bandwidth-limited tasks) | Low (config-based) | Negligible |
-| Token Merging (ToMe) | ~10-15% (activations) | ~25-35% (attention ops) | Low (single patch) | Minor at ratio 0.15 |
+| Token Merging (ToMe) | ~10-15% (activations) | ~25-35% (attention ops) | Low (single patch) | Minor at ratio 0.4 |
 | VAE Slicing | Prevents OOM spikes | Minimal latency cost | Trivial (one-liner) | None |
 | Combined Stack | ~60-65% total | ~30-40% end-to-end | Low | Minor texture softening |
 
@@ -519,7 +434,7 @@ flowchart TD
     
     subgraph ToMe Process
         T2["Tokens N 16384"] --> Sim[Compute Token Similarity Matrix]
-        Sim --> Merge["Merge 15 percent most similar tokens"]
+        Sim --> Merge["Merge 40 percent most similar tokens"]
         Merge --> T3["Reduced Tokens N prime 9830"]
     end
     
@@ -542,61 +457,6 @@ flowchart TD
 2. Identify pairs with highest similarity
 3. Merge via weighted average based on attention scores
 4. After processing, tokens are "unmerged" to restore spatial structure
-
-### SDXL Time Embedding & Conditioning
-
-SDXL conditions the UNet on multiple factors beyond just text.
-
-```mermaid
-flowchart TB
-    subgraph Timestep Conditioning
-        T["Timestep t<br/>0 to 1000"] --> Sin[Sinusoidal Embedding<br/>sin/cos frequencies]
-        Sin --> MLP1["MLP<br/>320→1280"]
-        MLP1 --> TimeEmb[Time Embedding<br/>1280-d]
-    end
-    
-    subgraph Resolution Conditioning
-        OrigSize["Original Size<br/>(H_orig, W_orig)"] --> SizeEmb[Size Embedding]
-        TargetSize["Target Size<br/>(1024, 1024)"] --> SizeEmb
-        CropCoords["Crop Coords<br/>(top, left)"] --> SizeEmb
-        SizeEmb --> SizeVec["Size Vector<br/>256-d"]
-    end
-    
-    subgraph Text Conditioning
-        Pool1[Pooled CLIP ViT-L] --> PoolMLP[MLP Projection]
-        Pool2[Pooled CLIP ViT-bigG] --> PoolMLP
-        PoolMLP --> TextVec[Text Vector<br/>1280-d]
-    end
-    
-    subgraph Fusion
-        TimeEmb --> Add[Add]
-        SizeVec --> Add
-        TextVec --> Add
-        Add --> CondVec["Final Conditioning Vector<br/>1280-d"]
-    end
-    
-    subgraph UNet Integration
-        CondVec --> ResNet1[ResNet Block 1<br/>+ CondVec via AdaGN]
-        CondVec --> ResNet2[ResNet Block 2<br/>+ CondVec via AdaGN]
-        CondVec --> ResNetN[ResNet Block N<br/>+ CondVec via AdaGN]
-    end
-```
-
-**Adaptive Group Normalization (AdaGN)**:
-```
-AdaGN(h, c) = GroupNorm(h) * (1 + scale(c)) + shift(c)
-```
-Where:
-- `h`: hidden features from previous layer
-- `c`: conditioning vector
-- `scale(c)` and `shift(c)`: learned linear projections
-
-**Time Embedding Math**:
-```
-pos_emb[i] = sin(t / 10000^(2i/d))  for even i
-pos_emb[i] = cos(t / 10000^(2i/d))  for odd i
-```
-Provides smooth, continuous representation of denoising progress.
 
 ### NF4 Quantization Mechanism
 
@@ -626,142 +486,9 @@ flowchart LR
 
 ### Cross-Attention Mechanism: Text-to-Image Guidance
 
-Cross-attention allows text embeddings to influence image generation at the pixel level.
-
-```mermaid
-flowchart TB
-    subgraph Spatial Features from UNet
-        Latent["Latent Features h<br/>B×C×H×W"] --> Reshape["Reshape to<br/>B×(H*W)×C"]
-        Reshape --> QProj["Query Projection<br/>Linear(C, D)"]
-        QProj --> Q["Queries Q<br/>B×(H*W)×D"]
-    end
-    
-    subgraph Text Embeddings
-        Text["Text Embeddings<br/>B×77×2048"] --> KProj["Key Projection<br/>Linear(2048, D)"]
-        Text --> VProj["Value Projection<br/>Linear(2048, D)"]
-        KProj --> K["Keys K<br/>B×77×D"]
-        VProj --> V["Values V<br/>B×77×D"]
-    end
-    
-    subgraph Attention Computation
-        Q --> MatMul1["Q × K^T<br/>B×(H*W)×77"]
-        K --> MatMul1
-        MatMul1 --> Scale["Scale by<br/>1/√D"]
-        Scale --> Softmax["Softmax<br/>Attention Weights"]
-        Softmax --> Attn["Attention Map<br/>B×(H*W)×77"]
-    end
-    
-    subgraph Output
-        Attn --> MatMul2["Attn × V<br/>Weighted sum of text features"]
-        V --> MatMul2
-        MatMul2 --> Out["Output Features<br/>B×(H*W)×D"]
-        Out --> Reshape2["Reshape to<br/>B×D×H×W"]
-        Reshape2 --> Final["Attended Features<br/>+ Residual Connection"]
-    end
-```
-
-**Attention Visualization**:
-For a pixel at position (i,j), the attention weights `Attn[i,j,:]` show which words from the prompt most influence that pixel:
-- "futuristic" → high attention on building edges
-- "sunset" → high attention on sky regions
-- "city" → high attention across spatial extent
-
-**Mathematical Formulation**:
-```
-Attention(Q, K, V) = softmax(QK^T / √d_k) V
-
-Where:
-- Q ∈ ℝ^(HW×D): queries from image features
-- K, V ∈ ℝ^(77×D): keys/values from text embeddings
-- d_k = D: scaling factor to stabilize gradients
-- Output ∈ ℝ^(HW×D): text-guided image features
-```
-
 ### Classifier-Free Guidance (CFG) Process
 
-CFG amplifies the influence of text prompts by computing both conditional and unconditional predictions.
-
-```mermaid
-flowchart TB
-    subgraph Dual Forward Pass
-        LatentIn["Noisy Latent z_t"] --> Dup[Duplicate]
-        Dup --> Cond["Conditional Branch<br/>with text embeddings"]
-        Dup --> Uncond["Unconditional Branch<br/>with empty prompt ''"]
-        
-        Prompt["Text Prompt"] --> TextEnc[Text Encoders]
-        TextEnc --> CondEmb["Text Embeddings"]
-        Empty["Empty String ''"] --> TextEnc2[Text Encoders]
-        TextEnc2 --> UnCondEmb["Null Embeddings"]
-        
-        Cond --> UNet1["UNet Forward<br/>+ CondEmb"]
-        CondEmb --> UNet1
-        UNet1 --> NoiseCond["ε_cond<br/>Conditional noise prediction"]
-        
-        Uncond --> UNet2["UNet Forward<br/>+ UnCondEmb"]
-        UnCondEmb --> UNet2
-        UNet2 --> NoiseUncond["ε_uncond<br/>Unconditional noise prediction"]
-    end
-    
-    subgraph Guidance Application
-        NoiseCond --> Sub["ε_cond - ε_uncond<br/>Direction of guidance"]
-        NoiseUncond --> Sub
-        Sub --> Scale["× guidance_scale<br/>(7.5 for fill, 2.5 for harmonize)"]
-        Scale --> Add["+ ε_uncond<br/>Base prediction"]
-        NoiseUncond --> Add
-        Add --> NoiseFinal["ε_guided<br/>Final noise prediction"]
-    end
-    
-    subgraph Denoising Step
-        NoiseFinal --> Sched["Scheduler Update<br/>z_t → z_{t-1}"]
-        LatentIn --> Sched
-        Sched --> LatentOut["Less noisy z_{t-1}"]
-    end
-```
-
-**CFG Formula**:
-```
-ε_guided = ε_uncond + guidance_scale × (ε_cond - ε_uncond)
-```
-
-**Impact of guidance_scale**:
-- `1.0`: No guidance, equivalent to unconditional generation
-- `7.5`: Strong adherence to prompt (used in Smart Fill)
-- `2.5`: Subtle guidance (used in Harmonization for natural blending)
-- Higher values: More literal interpretation but risk of artifacts
-
 ### Noise Schedule Visualization
-
-```mermaid
-flowchart LR
-    subgraph Forward Diffusion Training
-        X0["Clean Image x0"] -->|noise beta1| X1["Slightly noisy x1"]
-        X1 -->|noise beta2| X2[x2]
-        X2 -->|more steps| XT["Pure noise xT t equals 1000"]
-    end
-    
-    subgraph Reverse Diffusion Inference
-        ZT["Random noise zT approx N 0 I"] -->|UNet step 1| ZT1[zT minus 1]
-        ZT1 -->|UNet step 2| ZT2[zT minus 2]
-        ZT2 -->|30 steps trailing schedule| Z1[z1]
-        Z1 -->|UNet step 30| Z0["Clean latent z0"]
-    end
-    
-    Z0 --> VAE[VAE Decoder]
-    VAE --> Img["Output Image 1024x1024"]
-```
-
-**Trailing Timestep Spacing**:
-```python
-timesteps = [999, 970, 941, 912, ..., 50, 25, 12, 6, 3, 1, 0]
-```
-More steps concentrated at the end (low noise) where visual details form.
-
-**Comparison**:
-| Spacing | Early Steps | Late Steps | Quality | Speed |
-|---------|-------------|------------|---------|-------|
-| Linear | Uniform | Uniform | Good | Standard |
-| Leading | Dense | Sparse | Coarse details | Fast |
-| **Trailing** | **Sparse** | **Dense** | **Fine details** | **Balanced** |
 
 Cross-attention allows text embeddings to influence image generation at the pixel level.
 
@@ -994,6 +721,138 @@ Recommendations:
 
 ---
 
+## Future Improvements: SDXL Inpainting UNet Compression
+
+This section summarizes exploratory work to compress the SDXL Inpainting UNet for better deployability while preserving interfaces and practical accuracy. It focuses on three coordinated steps: topology-safe depth pruning, teacher-student distillation, and post-training dynamic INT8 quantization.
+
+### What Was Done and Why It Works
+
+- Pruning: Transformer attention blocks in down and up paths are pruned by removing middle layers while preserving the last attention layer per module. Mid-block attentions are left intact to avoid fragile shape mismatches. Configs are updated to match pruned depths to prevent export issues.
+- Distillation: The pruned student UNet learns to match the original FP16 teacher noise predictions via MSE, with identical conditioning (dual CLIP embeddings, time ids) and inpainting inputs (noisy latents plus mask plus masked latents). Student parameters use FP32 for optimizer stability, and autocast accelerates ops.
+- Quantization: The pruned UNet is exported to ONNX (FP32), validated, optionally split into external data if large, and quantized with dynamic per-channel INT8 weights (QUInt8). Input signatures and conditioning are preserved for the ORT SDXL Inpaint pipeline.
+
+```mermaid
+flowchart TD
+        A[Base SDXL Inpaint UNet] --> B[Topology Safe Pruning]
+        B --> C[Teacher Student Distillation]
+        C --> D[Hybrid Diffusers Pipeline]
+        D --> E[ONNX Export FP32]
+        E --> F[Dynamic INT8 Quantization]
+        F --> G[ORT SDXL Inpaint Pipeline]
+```
+
+### How It Preserved the UNet
+
+- Maintains 9 channel inpainting input signature and added conditioning (encoder hidden states, text embeds, time ids).
+- Protects last attention layers to preserve interfaces across down and up paths.
+- Updates UNet config to reflect pruned depth, preventing silent reconstruction of removed layers during export.
+- Aligns student to teacher diffusion behavior via noise prediction targets, retaining denoising quality.
+
+```mermaid
+flowchart LR
+    subgraph Down Path
+        D1[Attention Stack] --> D2[Prune Middle]
+        D2 --> D3[Keep Last Layer]
+    end
+    subgraph Mid Path
+        M1[Attention Stack] --> M2[Skip Pruning]
+    end
+    subgraph Up Path
+        U1[Attention Stack] --> U2[Prune Middle]
+        U2 --> U3[Keep Last Layer]
+    end
+```
+
+### Results Template
+
+Record your measured numbers after running training and `final_quant.py`.
+
+| Stage | Location | Params (approx) | Size (MB) | Reduction vs previous |
+| - | - | - | - | - |
+| Pruned UNet FP16 | `sdxl_inpainting_pruned_fp16` | — | — | — |
+| ONNX UNet FP32 | `sdxl_final_quantized/intermediate_fp32/unet/model.onnx` | script output | script output | — |
+| Quantized UNet INT8 | `sdxl_final_quantized/final_model/unet/model.onnx` | script output | script output | computed |
+
+Quality suggested: student teacher prediction MSE on a held out set, optional LPIPS on rendered inpaint images.
+zz
+#### Example Result
+
+Below is a sample composite showing the input image, mask, and the resulting output generated during the UNet compression experiments.
+
+![Input + Mask + Output](assets/FutureImprovement_input_mask_output.jpg)
+
+```mermaid
+pie title UNet Size Breakdown MB
+    "Pruned UNet FP16" : 0
+    "ONNX UNet FP32"   : 0
+    "Quantized UNet INT8" : 0
+```
+
+```mermaid
+flowchart LR
+    S1[Start Baseline UNet] --> S2[After Pruning]
+    S2 --> S3[After ONNX Export]
+    S3 --> S4[After INT8 Quantization]
+    style S1 fill:#777,stroke:#333,stroke-width:1px
+    style S2 fill:#6aa84f,stroke:#333,stroke-width:1px
+    style S3 fill:#3d85c6,stroke:#333,stroke-width:1px
+    style S4 fill:#e69138,stroke:#333,stroke-width:1px
+```
+
+### Why This Was Better
+
+- Depth pruning with last layer protection reduces compute while minimizing risk of breaking attention interfaces and skip connections.
+- Distilling noise predictions targets the diffusion objective directly, transferring learned behavior efficiently without full retraining.
+- Dynamic per-channel INT8 quantization is calibration free and preserves accuracy in wide attention and linear layers better than per tensor schemes.
+
+### Future Improvements
+
+- Sensitivity guided pruning and low rank factorization for high impact layers.
+- Quantization aware fine tuning to recover any quantization loss, especially in attention projections.
+- Hybrid precision export INT8 weights and FP16 critical projections for accuracy speed balance.
+- Static activation quantization with small calibration sets for CPU first deployments.
+
+### Additional Flow: Training and Export Lifecycle
+
+```mermaid
+sequenceDiagram
+        participant U as Student UNet Pruned
+        participant T as Teacher UNet FP16
+        participant D as Dataset and VAE
+        participant C as CLIP Encoders
+        participant P as Diffusers Pipeline
+        participant O as ONNX Exporter
+        participant Q as ORT Quantizer
+        D->>U: Latents plus Inpainting Inputs 9ch
+        C->>U: Text Embeds plus Time IDs
+        C->>T: Text Embeds plus Time IDs
+        T-->>U: Teacher Noise no grad
+        U-->>U: Student Noise
+        U-->>U: MSE Loss plus Backprop scaled
+        U->>P: Swap into Pipeline
+        P->>O: Export ONNX FP32
+        O-->>Q: Validated Model Graph
+        Q-->>P: Quantized UNet INT8
+```
+
+### Attention Path Pruning Map
+
+```mermaid
+flowchart TD
+        classDef keep fill:#a3f3a3,stroke:#333,stroke-width:1px,color:#111
+        classDef prune fill:#f7c6c6,stroke:#333,stroke-width:1px,color:#111
+
+        subgraph Down Blocks
+            D_attn1[Attn Block 1]:::keep --> D_attn2[Attn Block 2]:::prune --> D_attn3[Attn Block 3 Last]:::keep
+        end
+        subgraph Mid Block
+            M_attn[Mid Attn]:::keep
+        end
+        subgraph Up Blocks
+            U_attn1[Attn Block 1]:::keep --> U_attn2[Attn Block 2]:::prune --> U_attn3[Attn Block 3 Last]:::keep
+        end
+```
+
 ## Quick Links
 - API docs: `http://localhost:8080/docs`
 - Health: `http://localhost:8080/health`
@@ -1075,7 +934,7 @@ flowchart TB
         T1_XL -.4-bit NF4.-> T1_XL
         T2_XL -.4-bit NF4.-> T2_XL
         U1_XL -.4-bit NF4.-> U1_XL
-        U1_XL -.ToMe 15%.-> U1_XL
+        U1_XL -.ToMe 40%.-> U1_XL
         V1_XL -.slicing.-> V1_XL
     end
 ```
@@ -1097,13 +956,13 @@ flowchart TB
     - Endpoints: `GET /`, `GET /health`, `POST /generative-fill`, `POST /smart-fill`, `POST /harmonize`.
 - `EditingPipelines` (in `editing_pipelines_fill.py`):
     - **The Brain**: Loads SDXL components (UNet, text encoders, tokenizer, scheduler) and ControlNet (inpaint-dreamer) with fp16 VAE.
-    - Applies 4-bit NF4 quantization (UNet + text encoders) and ToMe pruning (ratio≈0.15).
+    - Applies 4-bit NF4 quantization (UNet + text encoders) and ToMe pruning (ratio≈0.4).
     - Implements `run_smart_fill` and `run_harmonize_sticker` with resource monitoring + optional W&B logging.
     - **ResourceMonitor**: A background thread that tracks RAM and CPU usage during inference.
     - **run_smart_fill**: Orchestrates the generation process using ControlNet and SDXL.
     - **run_harmonize_sticker**: Handles bounding box extraction and edge-focused inpainting for faster processing (768×768 crop).
 - `quantization_utils.py`: Contains the BitsAndBytesConfig setup. Configures the model to load in 4-bit NF4 (Normal Float 4) precision with double quantization, drastically reducing the memory footprint of the SDXL UNet and Text Encoders.
-- `pruning_utils.py`: Implements Token Merging (ToMe). Applies dynamic structural pruning to the attention mechanism, removing approximately 15% of redundant tokens during the forward pass to speed up inference.
+- `pruning_utils.py`: Implements Token Merging (ToMe). Applies dynamic structural pruning to the attention mechanism, removing approximately 40% of redundant tokens during the forward pass to speed up inference.
 
 ---
 
