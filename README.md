@@ -120,6 +120,8 @@ pip install -r requirements.txt
 python server.py
 ```
 The server will start on http://0.0.0.0:8080.
+you can test on http://0.0.0.0:8080/docs
+
 ## API Usage
 ### 1. Smart Fill (Generative Fill)
 Performs inpainting with an optional "Vibe Match" pass for lighting consistency.
