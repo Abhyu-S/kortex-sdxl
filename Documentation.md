@@ -1,6 +1,10 @@
 # Image Editing with Stable Diffusion XL with Generative Fill and Harmonization
 
-This is a production-ready image editing service built on Stable Diffusion XL (SDXL) with ControlNet for inpainting. It provides two primary capabilities: (1) text-guided Generative Fill to synthesize content within a mask while preserving structure, and (2) edge-aware Harmonization to blend pasted or moved objects into a scene. The system assembles SDXL components with an fp16 VAE and applies aggressive but quality-preserving optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then optionally performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar) but supports CPU fallback with significantly higher latency.
+This is a production-ready image editing service built on Stable Diffusion XL (SDXL) with ControlNet for inpainting. It provides two primary capabilities: 
+1. Text-guided Generative Fill to synthesize content within a mask while preserving structure, and
+2. Edge-aware Harmonization to blend pasted or moved objects into a scene.
+
+The system assembles SDXL components with an fp16 VAE and applies aggressive but quality-preserving optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then *optionally* performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar) but supports CPU fallback with significantly higher latency.
 
 ## Table of Contents
 - [Overview](#overview)
@@ -33,7 +37,7 @@ This is a production-ready image editing service built on Stable Diffusion XL (S
     - Simple, reliable FastAPI endpoints; built-in telemetry via Weights & Biases (optional).
 - Target hardware: 16GB-class GPUs (e.g., Tesla T4); supports CPU fallback with reduced performance.
 
-### The 2030 Compute Proxy: Why Tesla T4?
+### The Compute: Tesla T4
 To address the challenge's requirement for a lightweight, mobile-first editor, we utilized the NVIDIA Tesla T4 as a hardware proxy for the estimated compute capability of a flagship mobile NPU in 2030.
 
 - **Current State (2024)**: High-end mobile NPUs (e.g., A17 Pro, Snapdragon 8 Gen 3) reach ~35-45 TOPS (Trillions of Operations Per Second).
@@ -188,38 +192,7 @@ flowchart TB
     CondVec -.add to.-> UNet
 ```
 
-**Why Dual Encoders?**
-- **ViT-L**: Better at capturing fine-grained details and specific objects
-- **ViT-bigG**: Stronger on overall composition, style, and abstract concepts
-- **Combined**: Provides richer semantic representation (2048-d vs 768-d in SD 1.5)
-
-**Quantization Impact**:
-- Both encoders quantized to 4-bit NF4, reducing memory from ~2.5GB to ~0.6GB
-- Dequantization happens during forward pass, preserving embedding quality
-
-### Model Loading & Initialization Workflow
-
-The system initializes components in a specific order to optimize memory usage and avoid redundant operations.
-
-```mermaid
-flowchart TD
-    Start[Server Start] --> Init[Initialize EditingPipelines]
-    Init --> WB[Initialize W&B logging?]
-    WB -->|optional| NVML[Init pynvml for GPU monitoring]
-    NVML --> QC[Load Quantization Config]
-    QC --> CN[Load ControlNet fp16]
-    CN --> UNet[Load UNet with NF4]
-    UNet --> TE1[Load Text Encoder 1 NF4]
-    TE1 --> TE2[Load Text Encoder 2 NF4]
-    TE2 --> VAE[Load VAE fp16 + enable_slicing]
-    VAE --> TOK[Load Tokenizers]
-    TOK --> SCH[Configure Scheduler]
-    SCH --> ASM1[Assemble Inpaint Pipeline]
-    ASM1 --> TOME[Apply ToMe Pruning ratio=0.4]
-    TOME --> ASM2[Assemble Img2Img Pipeline]
-    ASM2 --> Ready[Server Ready]
-    Ready --> Listen[Listen on :8080]
-```
+ 
 
 ### ControlNet Architecture: Structure-Guided Inpainting
 
@@ -259,7 +232,6 @@ flowchart TB
 
 ---
 
-\
 
 ## Mathematical Computations
 - Diffusion: UNet predicts noise residuals per step; scheduler updates latent $z_t \to z_{t-1}$.
@@ -284,38 +256,7 @@ Trailing:  [1000, 950, 920, ..., 20, 5, 0]      (concentrated at end)
 
 Trailing spacing allocates more compute to final denoising steps where perceptual quality is most sensitive.
 
-### VAE Architecture: Latent Space Encoding/Decoding
-
-The VAE (Variational Autoencoder) compresses images into a compact latent representation and reconstructs them after diffusion processing.
-
-```mermaid
-flowchart LR
-    subgraph VAE Encoder
-        Img[RGB Image<br/>3x1024x1024] --> C1[Conv Block 1<br/>64 channels]
-        C1 --> C2[Conv Block 2<br/>128 channels]
-        C2 --> C3[Conv Block 3<br/>256 channels]
-        C3 --> C4[Conv Block 4<br/>512 channels]
-        C4 --> Quant[Quantization<br/>KL divergence]
-        Quant --> Latent[Latent z<br/>4x128x128]
-    end
-    
-    subgraph VAE Decoder
-        Latent2[Latent z<br/>4x128x128] --> D1[TransposeConv 1<br/>512 channels]
-        D1 --> D2[TransposeConv 2<br/>256 channels]
-        D2 --> D3[TransposeConv 3<br/>128 channels]
-        D3 --> D4[TransposeConv 4<br/>64 channels]
-        D4 --> Slice[Sliced Decode<br/>prevent OOM]
-        Slice --> ImgOut[RGB Image<br/>3x1024x1024]
-    end
-    
-    Latent -.8x compression.-> Latent2
-```
-
-**Key Features**:
-- **Compression Ratio**: 8x8 spatial compression (1024x1024 to 128x128) + 3 to 4 channels
-- **fp16 Fix**: Uses `madebyollin/sdxl-vae-fp16-fix` to prevent NaN issues in half-precision
-- **Sliced Decoding**: Processes image in tiles via `vae.enable_slicing()` to avoid OOM
-- **Latent Space**: 4-channel representation enables efficient diffusion processing
+ 
 
 ---
 
@@ -330,7 +271,7 @@ flowchart LR
 | Metric Category | Metric | Smart Fill (2-Pass) | Harmonization (Crop) | Analysis |
 |---|---|---|---|---|
 | GPU Resources | Peak VRAM | ~7.8 GB | ~7.3 GB | 4-bit quantization keeps SDXL well within T4 limits |
-| | Power Draw | ~70W | ~68W | Consistent power usage during UNet denoising steps |
+| | Power Draw | ~70W | spikes at 68W | Consistent power usage during UNet denoising steps |
 | Performance | Latency | ~12-15s | ~8-10s | Harmonization is faster due to reduced resolution (768px crop) and fewer steps (15) |
 | | Throughput | ~5.8 tokens/sec | N/A | Token merging keeps generation fluid despite the heavy SDXL architecture |
 | | TFLOPs | ~0.17 | ~0.16 | The pipeline maximizes the T4's float performance |
@@ -340,22 +281,7 @@ flowchart LR
 - **Bottlenecks**: The primary bottleneck remains the iterative denoising process (scheduler steps). Smart Fill requires 30 steps for generation, making it compute-bound.
 - **Thermal Profile**: The model runs within safe thermal limits (<50°C), aided by the reduced memory bandwidth requirements of 4-bit weights.
 
-### Latency Breakdown (Smart Fill, 30 steps)
-
-| Phase | Time (approx) | % of Total | Parallelizable? |
-|---|---|---|---|
-| Image decode & resize | ~0.2-0.3s | ~2% | No (I/O bound) |
-| Text encoding (2 encoders) | ~0.8-1.2s | ~8% | Partially (batch prompts) |
-| UNet denoising (30 steps) | ~9-11s | ~75% | No (sequential by design) |
-| VAE decode | ~1.5-2s | ~12% | No (but sliced to prevent OOM) |
-| Vibe Match (if enabled) | +3-4s | variable | No |
-| Image encode & response | ~0.2-0.3s | ~2% | No (I/O bound) |
-| **Total (no vibe)** | **~12-15s** | **100%** | N/A |
-
-**Observations**:
-- UNet denoising dominates; reducing steps (e.g., 20 instead of 30) trades quality for ~3-4s speedup.
-- Text encoding is one-time per prompt; caching prompt embeddings could eliminate this for repeated use.
-- VAE decoding benefits from slicing but cannot be fully parallelized due to memory constraints.
+ 
 
 --- Memory Footprint Analysis
 
@@ -677,33 +603,11 @@ Notes: GPU recommended; CPU works but is slow. Ensure sufficient disk space for 
 
 ---
 
-## Security and Hardening
-- Input validation: accept only image MIME types; restrict max payload sizes.
-- Prompt limits: cap length/characters to mitigate prompt-based DoS.
-- Network: behind TLS, auth, throttling, and rate-limiting if public. Configure CORS when used from browsers.
-- Dependencies: keep `requirements.txt` updated; monitor CVEs.
+ 
 
----
+ 
 
-## Extensibility
-- New mode: add a method in `EditingPipelines`, then a FastAPI route.
-- Scheduler tweaks: construct and assign schedulers via Diffusers API.
-- Alternate ControlNets: swap `CONTROLNET_MODEL` for task-specific variants.
-- Quality/perf: tune ToMe ratio (0.2 to 0.5), steps, guidance, and `vibe_strength`.
-
----
-
-## Known Limitations and Recommendations
-- Internal resizing can soften ultra-high-res details; consider tiling for future work.
-- High `vibe_strength` risks content drift; prefer 0.2 to 0.4.
-- Token Merging may reduce micro-detail; lower ratio for detail-critical edits.
-- Cold start: first run downloads/caches models.
-
-Recommendations:
-- Tight masks and clear prompts (with negatives) improve reliability and speed.
-- Use W&B metrics to calibrate step counts and vibe strength.
-
----
+ 
 
 ## Development Journey (Summary)
 - From baseline SDXL to quantized (NF4) + pruned (ToMe) pipelines for constrained GPUs.
@@ -714,13 +618,12 @@ Recommendations:
 ---
 
 ## Future Scope
-- Batching/multi-request schedulers for throughput under load.
-- More ControlNet conditions (depth/normal/lineart) and LoRA adapters.
-- Deterministic seeding and reproducibility tooling.
-- Test suite with golden outputs and continuous benchmarking.
-
----
-
+- Multi-resolution tiling for ultra-high-res edits
+- Embedding caching for repeated prompts
+- Adaptive ToMe ratio per layer
+- Hybrid precision paths (fp16 critical projections, int8 weights)
+- ORT/TensorRT export for full pipeline components
+ 
 ## Future Improvements: SDXL Inpainting UNet Compression
 
 This section summarizes exploratory work to compress the SDXL Inpainting UNet for better deployability while preserving interfaces and practical accuracy. It focuses on three coordinated steps: topology-safe depth pruning, teacher-student distillation, and post-training dynamic INT8 quantization.
@@ -812,28 +715,7 @@ flowchart LR
 - Hybrid precision export INT8 weights and FP16 critical projections for accuracy speed balance.
 - Static activation quantization with small calibration sets for CPU first deployments.
 
-### Additional Flow: Training and Export Lifecycle
-
-```mermaid
-sequenceDiagram
-        participant U as Student UNet Pruned
-        participant T as Teacher UNet FP16
-        participant D as Dataset and VAE
-        participant C as CLIP Encoders
-        participant P as Diffusers Pipeline
-        participant O as ONNX Exporter
-        participant Q as ORT Quantizer
-        D->>U: Latents plus Inpainting Inputs 9ch
-        C->>U: Text Embeds plus Time IDs
-        C->>T: Text Embeds plus Time IDs
-        T-->>U: Teacher Noise no grad
-        U-->>U: Student Noise
-        U-->>U: MSE Loss plus Backprop scaled
-        U->>P: Swap into Pipeline
-        P->>O: Export ONNX FP32
-        O-->>Q: Validated Model Graph
-        Q-->>P: Quantized UNet INT8
-```
+ 
 
 ### Attention Path Pruning Map
 
@@ -966,35 +848,7 @@ flowchart TB
 
 ---
 
-## How It Works
-1. Client uploads `image`, `mask`, and `prompt`.
-2. Server decodes to PIL images and calls `EditingPipelines`.
-3. Smart Fill:
-     - Generative Fill (inpaint with ControlNet) to synthesize masked area.
-     - Optional Vibe Match (img2img) to align lighting/style with low guidance.
-4. Harmonization:
-     - Finds bbox around the pasted object, builds an edge-only mask, crops, and inpaints just edges.
-5. Resizes result back to original size and returns PNG.
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant S as FastAPI
-    participant P as EditingPipelines
-    participant I as SDXL+ControlNet Inpaint
-    participant M as SDXL Img2Img
-
-    C->>S: POST /smart-fill (image, mask, prompt, vibe)
-    S->>P: run_smart_fill()
-    P->>I: inpaint(image, mask, control)
-    I-->>P: filled image
-    alt vibe_strength > 0
-        P->>M: img2img(strength=vibe)
-        M-->>P: relit image
-    end
-    P-->>S: final image
-    S-->>C: PNG bytes
-```
+ 
 
 ### Smart Fill Workflow (Detailed)
 
@@ -1160,72 +1014,7 @@ flowchart TB
     O --> Client
 ```
 
-### Complete Inference Dataflow: Smart Fill
-
-This diagram shows the complete data transformation through all deep learning components.
-
-```mermaid
-flowchart TB
-    subgraph Input Processing
-        Img[RGB Image HxWx3] --> Resize1[Resize to 1024x1024]
-        Mask[Binary Mask HxWx1] --> Resize2[Resize to 1024x1024]
-        Prompt[Text Prompt] --> Tok1[Tokenizer 1]
-        Prompt --> Tok2[Tokenizer 2]
-    end
-    
-    subgraph Text Encoding NF4
-        Tok1 --> TE1["Text Encoder 1 CLIP ViT-L 4-bit NF4"]
-        Tok2 --> TE2["Text Encoder 2 CLIP ViT-bigG 4-bit NF4"]
-        TE1 --> Pool[Pooled Embeddings 768-d]
-        TE2 --> Pool
-        Pool --> TE["Text Embeddings 77x2048"]
-    end
-    
-    subgraph Image Encoding
-        Resize1 --> VE[VAE Encoder fp16]
-        VE --> LatentClean[Clean Latent z0 4x128x128]
-    end
-    
-    subgraph Noise Addition
-        LatentClean --> Noise[Add Noise t equals 1000]
-        Noise --> LatentNoisy[Noisy Latent zt 4x128x128]
-    end
-    
-    subgraph ControlNet Processing
-        Resize1 --> CN["ControlNet fp16"]
-        Resize2 --> CN
-        CN --> CtrlFeatures["Control Features Multiple scales"]
-    end
-    
-    subgraph Iterative Denoising 30 steps
-        LatentNoisy --> Step["Denoising Step t to t-1"]
-        TE -.-> Step
-        CtrlFeatures -.-> Step
-        
-        Step --> UNet["UNet 4-bit NF4 + ToMe ratio 0.4"]
-        UNet --> Pred[Noise Prediction epsilon theta]
-        Pred --> Sched[Scheduler Update EulerDiscrete]
-        Sched --> LatentNext["z t-1"]
-        LatentNext -.-> Step
-    end
-    
-    subgraph Image Decoding
-        LatentNext --> LatentFinal["Denoised Latent z0 4x128x128"]
-        LatentFinal --> VD["VAE Decoder fp16 + slicing"]
-        VD --> ImgFilled["Filled Image 1024x1024x3"]
-    end
-    
-    subgraph Optional Vibe Match
-        ImgFilled --> VE2[VAE Encoder]
-        VE2 --> Denoise2["Img2Img Denoise strength x 30 steps"]
-        TE -.-> Denoise2
-        Denoise2 --> VD2[VAE Decoder]
-        VD2 --> ImgRelit[Relit Image 1024x1024x3]
-    end
-    
-    ImgRelit --> Final[Resize to Original HxW]
-    Final --> Output[PNG Response]
-```
+ 
 
 **Data Dimensions at Each Stage**:
 - Input Image: `3x1024x1024` (RGB)
