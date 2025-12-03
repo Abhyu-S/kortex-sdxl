@@ -71,6 +71,27 @@ The **NVIDIA Tesla T4**, widely used in this project's server simulation, offers
 * **~8.1 TFLOPS (FP32)**
 
 By optimizing our SDXL pipeline (via 4-bit NF4 quantization and Token Merging) to run efficiently on the T4, we effectively demonstrate a workload that will fit comfortably within the thermal and compute budget of a high-end mobile device in 2030.
+### References:
+- [Stanford's Artificial Intelligence Index Report 2025](https://hai.stanford.edu/ai-index/2025-ai-index-report)
+
+- [Stanford's Artificial Intelligence Index Report 2024](https://hai.stanford.edu/ai-index/2024-ai-index-report)
+
+- [Stanford's Artificial Intelligence Index Report 2023](https://hai.stanford.edu/ai-index/2023-ai-index-report)
+
+- [Stanford's Artificial Intelligence Index Report 2022](https://hai.stanford.edu/ai-index/2022-ai-index-report)
+
+- [Stanford's Artificial Intelligence Index Report 2021](https://hai.stanford.edu/ai-index/2021-ai-index-report)
+
+- [The state of AI in 2025: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/capabilities/quantumblack/our-insights/the-state-of-ai)
+
+- [The state of AI in 2024: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/capabilities/quantumblack/our-insights/the-state-of-ai-2024)
+
+- [The state of AI in 2023: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/capabilities/quantumblack/our-insights/the-state-of-ai-in-2023-generative-ais-breakout-year)
+
+- [The state of AI in 2022: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/~/media/mckinsey/business%20functions/quantumblack/our%20insights/the%20state%20of%20ai%20in%202022%20and%20a%20half%20decade%20in%20review/the-state-of-ai-in-2022-and-a-half-decade-in-review.pdf)
+
+- [The state of AI in 2021: Agents, innovation, and transformation by QuantumBlack AI by McKinsey](https://www.mckinsey.com/capabilities/quantumblack/our-insights/global-survey-the-state-of-ai-in-2021)
+
 ## Architecture
 
 ![SDXL Architecture](assets/SDXL_Architecture.jpg)
