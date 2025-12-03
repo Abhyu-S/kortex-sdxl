@@ -555,48 +555,6 @@ flowchart LR
     end
 ```
 
-### Results Template
-
-Record your measured numbers after running training and `final_quant.py`.
-
-| Stage | Location | Params (approx) | Size (MB) | Reduction vs previous |
-| - | - | - | - | - |
-| Pruned UNet FP16 | `sdxl_inpainting_pruned_fp16` | — | — | — |
-| ONNX UNet FP32 | `sdxl_final_quantized/intermediate_fp32/unet/model.onnx` | script output | script output | — |
-| Quantized UNet INT8 | `sdxl_final_quantized/final_model/unet/model.onnx` | script output | script output | computed |
-
-Quality suggested: student teacher prediction MSE on a held out set, optional LPIPS on rendered inpaint images.
-zz
-#### Example Result
-
-Below is a sample composite showing the input image, mask, and the resulting output generated during the UNet compression experiments.
-
-![Input + Mask + Output](assets/FutureImprovement_input_mask_output.jpg)
-
-```mermaid
-pie title UNet Size Breakdown MB
-    "Pruned UNet FP16" : 0
-    "ONNX UNet FP32"   : 0
-    "Quantized UNet INT8" : 0
-```
-
-```mermaid
-flowchart LR
-    S1[Start Baseline UNet] --> S2[After Pruning]
-    S2 --> S3[After ONNX Export]
-    S3 --> S4[After INT8 Quantization]
-    style S1 fill:#777,stroke:#333,stroke-width:1px
-    style S2 fill:#6aa84f,stroke:#333,stroke-width:1px
-    style S3 fill:#3d85c6,stroke:#333,stroke-width:1px
-    style S4 fill:#e69138,stroke:#333,stroke-width:1px
-```
-
-### Why This Was Better
-
-- Depth pruning with last layer protection reduces compute while minimizing risk of breaking attention interfaces and skip connections.
-- Distilling noise predictions targets the diffusion objective directly, transferring learned behavior efficiently without full retraining.
-- Dynamic per-channel INT8 quantization is calibration free and preserves accuracy in wide attention and linear layers better than per tensor schemes.
-
 ### Future Improvements
 
 - Sensitivity guided pruning and low rank factorization for high impact layers.
