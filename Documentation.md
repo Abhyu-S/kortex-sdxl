@@ -3,7 +3,8 @@
 Kortex-SDXL is a production-ready image editing service built on Stable Diffusion XL (SDXL) with ControlNet for inpainting. It provides two primary capabilities:
 1. text-guided Generative Fill to synthesize content within a mask while preserving structure
 2. edge-aware Harmonization to blend pasted or moved objects into a scene.
-The system assembles SDXL components with an fp16 VAE and applies aggressive but quality-preserving optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then optionally performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar) but supports CPU fallback with significantly higher latency.
+
+The system assembles SDXL components with an fp16 VAE and applies aggressive but quality-preserving optimizations: 4-bit NF4 quantization for UNet and text encoders (via BitsAndBytes) and Token Merging (ToMe) to reduce attention token cost at inference time. A two-pass “Smart Fill” pipeline inpaints first, then optionally performs a lightweight Img2Img pass (Vibe Match) to align lighting and style. A FastAPI server exposes simple multipart endpoints, returning PNG images. Resource usage and performance telemetry (latency, RAM/CPU, GPU util proxy, estimated TFLOPs) are captured via a background monitor and optionally logged to Weights & Biases. The system targets 16GB-class GPUs (e.g., T4 or similar (predicted to be 2030's compute)) but supports CPU fallback with significantly higher latency.
 
 ## Table of Contents
 - [Overview](#overview)
@@ -35,17 +36,6 @@ The system assembles SDXL components with an fp16 VAE and applies aggressive but
     - Two-pass Smart Fill: Fill then optional Vibe Match for lighting/style alignment.
     - Simple, reliable FastAPI endpoints; built-in telemetry via Weights & Biases (optional).
 - Target hardware: 16GB-class GPUs (e.g., Tesla T4); supports CPU fallback with reduced performance.
-
-### The 2030 Compute Proxy: Why Tesla T4?
-To address the challenge's requirement for a lightweight, mobile-first editor, we utilized the NVIDIA Tesla T4 as a hardware proxy for the estimated compute capability of a flagship mobile NPU in 2030.
-
-- **Current State (2024)**: High-end mobile NPUs (e.g., A17 Pro, Snapdragon 8 Gen 3) reach ~35-45 TOPS (Trillions of Operations Per Second).
-- **The 2030 Projection**: Extrapolating current NPU efficiency gains, mobile edge devices in 2030 are projected to exceed 100+ TOPS, rivaling the inference throughput of today's mid-range inference cards like the T4 (~65 TOPS Int8 / ~8 TFLOPS FP32).
-- **Our Approach**: By optimizing Stable Diffusion XL (SDXL) with 4-bit Quantization and Token Merging, we demonstrate that high-fidelity generative editing can run locally on this "2030-equivalent" compute profile without cloud dependency.
-
-### Datasets
-This project utilizes a **Training-Free approach**. It leverages pre-trained weights from Stability AI and Destitech, applying inference-time optimizations to achieve performance goals.
-- **Inference data**: Accepts standard image formats (JPG, PNG) and binary masks.
 
 ## Architecture
 
@@ -218,7 +208,7 @@ flowchart TD
     VAE --> TOK[Load Tokenizers]
     TOK --> SCH[Configure Scheduler]
     SCH --> ASM1[Assemble Inpaint Pipeline]
-    ASM1 --> TOME[Apply ToMe Pruning ratio=0.4]
+    ASM1 --> TOME[Apply ToMe Pruning ratio=0.15]
     TOME --> ASM2[Assemble Img2Img Pipeline]
     ASM2 --> Ready[Server Ready]
     Ready --> Listen[Listen on :8080]
@@ -416,7 +406,7 @@ flowchart LR
 
 ### Techniques Applied
 - **Token Merging (ToMe) Pruning**
-    - Application: `tomesd.apply_patch(pipeline, ratio=0.4)` merges redundant attention tokens at inference.
+    - Application: `tomesd.apply_patch(pipeline, ratio=0.15)` merges redundant attention tokens at inference.
     - Effect: Reduces attention compute with minimal quality loss; speeds up denoising passes.
     - Citation: ToMe — https://github.com/facebookresearch/ToMe
 - **BitsAndBytes 4-bit NF4 Quantization**
@@ -457,7 +447,7 @@ flowchart LR
 | Optimization | VRAM Reduction | Speed Gain | Implementation Complexity | Quality Impact |
 |---|---|---|---|---|
 | 4-bit NF4 Quantization | ~55-60% | Moderate (bandwidth-limited tasks) | Low (config-based) | Negligible |
-| Token Merging (ToMe) | ~10-15% (activations) | ~25-35% (attention ops) | Low (single patch) | Minor at ratio 0.4 |
+| Token Merging (ToMe) | ~10-15% (activations) | ~25-35% (attention ops) | Low (single patch) | Minor at ratio 0.15 |
 | VAE Slicing | Prevents OOM spikes | Minimal latency cost | Trivial (one-liner) | None |
 | Combined Stack | ~60-65% total | ~30-40% end-to-end | Low | Minor texture softening |
 
@@ -474,7 +464,7 @@ flowchart TD
     
     subgraph ToMe Process
         T2["Tokens N 16384"] --> Sim[Compute Token Similarity Matrix]
-        Sim --> Merge["Merge 40 percent most similar tokens"]
+        Sim --> Merge["Merge 15 percent most similar tokens"]
         Merge --> T3["Reduced Tokens N prime 9830"]
     end
     
@@ -1030,7 +1020,7 @@ flowchart TB
         T1_XL -.4-bit NF4.-> T1_XL
         T2_XL -.4-bit NF4.-> T2_XL
         U1_XL -.4-bit NF4.-> U1_XL
-        U1_XL -.ToMe 40%.-> U1_XL
+        U1_XL -.ToMe 15%.-> U1_XL
         V1_XL -.slicing.-> V1_XL
     end
 ```
@@ -1052,13 +1042,13 @@ flowchart TB
     - Endpoints: `GET /`, `GET /health`, `POST /generative-fill`, `POST /smart-fill`, `POST /harmonize`.
 - `EditingPipelines` (in `editing_pipelines_fill.py`):
     - **The Brain**: Loads SDXL components (UNet, text encoders, tokenizer, scheduler) and ControlNet (inpaint-dreamer) with fp16 VAE.
-    - Applies 4-bit NF4 quantization (UNet + text encoders) and ToMe pruning (ratio≈0.4).
+    - Applies 4-bit NF4 quantization (UNet + text encoders) and ToMe pruning (ratio≈0.15).
     - Implements `run_smart_fill` and `run_harmonize_sticker` with resource monitoring + optional W&B logging.
     - **ResourceMonitor**: A background thread that tracks RAM and CPU usage during inference.
     - **run_smart_fill**: Orchestrates the generation process using ControlNet and SDXL.
     - **run_harmonize_sticker**: Handles bounding box extraction and edge-focused inpainting for faster processing (768×768 crop).
 - `quantization_utils.py`: Contains the BitsAndBytesConfig setup. Configures the model to load in 4-bit NF4 (Normal Float 4) precision with double quantization, drastically reducing the memory footprint of the SDXL UNet and Text Encoders.
-- `pruning_utils.py`: Implements Token Merging (ToMe). Applies dynamic structural pruning to the attention mechanism, removing approximately 40% of redundant tokens during the forward pass to speed up inference.
+- `pruning_utils.py`: Implements Token Merging (ToMe). Applies dynamic structural pruning to the attention mechanism, removing approximately 15% of redundant tokens during the forward pass to speed up inference.
 
 ---
 
