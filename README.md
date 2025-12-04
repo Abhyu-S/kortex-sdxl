@@ -221,3 +221,4 @@ Real-time resource monitoring (RAM, VRAM, TFLOPS) is built into the pipeline and
 - [Controlnet-inpainting-dreamer](https://huggingface.co/destitech/controlnet-inpaint-dreamer-sdxl)
 - [SDXL-VAE (fp16)](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)
 - [(ToMe) Token Merging](https://huggingface.co/docs/diffusers/v0.29.1/optimization/tome)
+- [4-bit Quantization (bitsandbytes)](https://huggingface.co/blog/4bit-transformers-bitsandbytes)
