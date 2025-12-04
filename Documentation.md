@@ -264,7 +264,7 @@ Trailing spacing allocates more compute to final denoising steps where perceptua
 
 ### Techniques Applied
 - **Token Merging (ToMe) Pruning**
-    - Application: `tomesd.apply_patch(pipeline, ratio=0.4)` merges redundant attention tokens at inference.
+    - Application: `tomesd.apply_patch(pipeline, ratio=0.15)` merges redundant attention tokens at inference.
     - Effect: Reduces attention compute with minimal quality loss; speeds up denoising passes.
     - Citation: ToMe — https://github.com/facebookresearch/ToMe
 - **BitsAndBytes 4-bit NF4 Quantization**
@@ -294,14 +294,14 @@ Trailing spacing allocates more compute to final denoising steps where perceptua
 |---|---|---|---|---|
 | Baseline (fp16 weights) | High (>12 GB) | High | Reference | Hard to fit on 12-16 GB GPUs |
 | NF4 only | Medium (~8-9 GB) | Medium | Near-ref | Good balance without pruning |
-| NF4 + ToMe (0.4) | Lower (~7-8 GB) | Lower | Minor micro-detail loss | Recommended default here |
+| NF4 + ToMe (0.15) | Lower (~7-8 GB) | Lower | Minor micro-detail loss | Recommended default here |
 
 ### Optimization Impact Breakdown
 
 | Optimization | VRAM Reduction | Speed Gain | Implementation Complexity | Quality Impact |
 |---|---|---|---|---|
 | 4-bit NF4 Quantization | ~55-60% | Moderate (bandwidth-limited tasks) | Low (config-based) | Negligible |
-| Token Merging (ToMe) | ~10-15% (activations) | ~25-35% (attention ops) | Low (single patch) | Minor at ratio 0.4 |
+| Token Merging (ToMe) | ~10-15% (activations) | ~25-35% (attention ops) | Low (single patch) | Minor at ratio 0.15 |
 | VAE Slicing | Prevents OOM spikes | Minimal latency cost | Trivial (one-liner) | None |
 | Combined Stack | ~60-65% total | ~30-40% end-to-end | Low | Minor texture softening |
 
@@ -333,7 +333,7 @@ flowchart TD
 
 **Computational Savings**:
 - Original: $O(16384^2) \approx 268M$ operations
-- With ToMe (r=0.4): $O(9830^2) \approx 97M$ operations
+- With ToMe (r=0.15): $O(9830^2) \approx 97M$ operations
 - **Speedup**: ~2.8× for attention layers (~35% faster overall)
 
 **Merge Strategy**:
@@ -505,12 +505,6 @@ Notes: GPU recommended; CPU works but is slow. Ensure sufficient disk space for 
 
 ---
 
- 
-
- 
-
- 
-
 ## Future Scope
 - Multi-resolution tiling for ultra-high-res edits
 - Embedding caching for repeated prompts
@@ -603,10 +597,16 @@ Examples:
 - “Green park background, shallow depth of field, no text, no watermark”
 
 ### Smart Fill Workflow
-1) Build binary mask (white=edit). 2) Provide descriptive prompt + negatives. 3) Use `/smart-fill` with `vibe_strength` 0.2 to 0.4. 4) Compare results; adjust strength if needed.
+1. Build binary mask (white=edit).
+2. Provide descriptive prompt + negatives.
+3. Use `/smart-fill` with `vibe_strength` 0.1 to 0.3.
+4. Compare results; adjust strength if needed.
 
 ### Harmonization Workflow
-1) Prepare composite with pasted object. 2) Mask white over the pasted area. 3) Call `/harmonize`. 4) Validate seams/edges.
+1. Prepare composite with pasted object.
+2. Mask white over the pasted area.
+3. Call `/harmonize`.
+4. Validate seams/edges.
 
 ### Commands (PowerShell)
 ```powershell
