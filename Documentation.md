@@ -199,9 +199,7 @@ flowchart TB
 
 The following table compares the performance of **Kortex (Ours)** against the baseline **SDXL-InstructPix2Pix** on the `fusing/instructpix2pix-1000-samples` [link](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) dataset.
 
-### Key Observations:
 * **Precision**: Kortex (via Smart Fill) strictly adheres to the input mask, resulting in near-zero L1/L2 error for unedited regions (backgrounds). In contrast, the baseline InstructPix2Pix model often "hallucinates" global changes (e.g., lighting shifts, texture bleeding) even when the instruction targets a specific object.
-* **Fidelity**: By leveraging the SDXL backbone with NF4 quantization, Kortex maintains higher textural fidelity for object swaps compared to the baseline.
 
 ---
 
