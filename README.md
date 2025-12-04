@@ -204,15 +204,6 @@ This document compares the computational characteristics of **Harmonization** (B
 
 ---
 
-## 3. Optimization Recommendations
-
-1.  **To Speed Up Generative Fill:**
-    * **Hardware Upgrade:** This workload is strictly limited by the GPU hardware. A GPU with a higher power limit (>70W) and higher memory bandwidth is required for faster inference.
-    * **Cooling:** Ensure the device has adequate cooling, as the workload causes rapid thermal variance.
-
-2.  **To Speed Up Harmonization:**
-    * **I/O Optimization:** Focus on disk and network speeds. The GPU is underutilized. Moving model weights to faster NVMe storage or improving network download speeds for the input data will likely reduce the total runtime.
-
 ### Charts
 ![alt text](assets/Section-4-Panel-19-zi0m568sl.png) ![alt text](assets/Section-4-Panel-20-uy8a7yk1w.png) ![alt text](assets/Section-4-Panel-21-0w4dex6yu.png) ![alt text](assets/Section-2-Panel-0-qfho7iza6.png) ![alt text](assets/Section-2-Panel-1-w0lfq6r37.png) ![alt text](assets/Section-2-Panel-2-nnkqs6j8d.png) ![alt text](assets/Section-2-Panel-3-xxtm21cpo.png) ![alt text](assets/Section-2-Panel-4-byl7ls1rf.png) ![alt text](assets/Section-2-Panel-5-t42wqk4og.png) ![alt text](assets/Section-2-Panel-6-lquc9hls9.png) ![alt text](assets/Section-2-Panel-7-xyr9djojz.png) ![alt text](assets/Section-2-Panel-8-nm77dfanm.png) ![alt text](assets/Section-2-Panel-9-h4cl1t1tn.png) ![alt text](assets/Section-4-Panel-0-t9w5eqvok.png) ![alt text](assets/Section-4-Panel-1-8aucfv5zf.png) ![alt text](assets/Section-4-Panel-2-fif6xyq1o.png) ![alt text](assets/Section-4-Panel-3-9kcyle0jf.png) ![alt text](assets/Section-4-Panel-4-9hbgsom47.png) ![alt text](assets/Section-4-Panel-5-6fu4y3q94.png) ![alt text](assets/Section-4-Panel-6-0usjrj1gh.png) ![alt text](assets/Section-4-Panel-7-h47es1qad.png) ![alt text](assets/Section-4-Panel-8-qat4uz36p.png) ![alt text](assets/Section-4-Panel-9-ivlkr7616.png) ![alt text](assets/Section-4-Panel-10-buu7ktx3j.png) ![alt text](assets/Section-4-Panel-11-0v2rimcx0.png) ![alt text](assets/Section-4-Panel-12-2zhn685ri.png) ![alt text](assets/Section-4-Panel-13-eczzi41t8.png) ![alt text](assets/Section-4-Panel-14-6x1e4g9na.png) ![alt text](assets/Section-4-Panel-15-n4oqhxe9w.png) ![alt text](assets/Section-4-Panel-16-xjq0oyce6.png) ![alt text](assets/Section-4-Panel-17-wjfeuo292.png) ![alt text](assets/Section-4-Panel-18-oldxwnlb3.png)
 
