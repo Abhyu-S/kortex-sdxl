@@ -1,6 +1,6 @@
 # Generative Fill & Harmonization with Optimized SDXL
 
-This repository contains a high-efficiency generative fill and image harmonization system powered by Stable Diffusion XL (SDXL) and ControlNet. It implements advanced optimization techniques to run heavy diffusion pipelines with reduced latency and memory footprint.The system allows users to perform complex image editing tasks - such as object replacement, background generation, and sticker harmonization - while maintaining photometric consistency through a "Vibe Match" mechanism.
+This repository contains a high-efficiency generative fill and image harmonization system powered by Stable Diffusion XL (SDXL) and ControlNet. It implements advanced optimization techniques to run heavy diffusion pipelines with reduced latency and memory footprint.The system allows users to perform complex image editing tasks - such as object replacement, background generation, and sticker harmonization - while maintaining photometric consistency through an optional "Vibe Match" mechanism.
 
 ## Table of Contents
 1. [The Compute](#the-compute)
@@ -30,20 +30,20 @@ This repository contains a high-efficiency generative fill and image harmonizati
 ---
 
 ## The Compute
-To address the challenge's requirement for a mobile-first editor operating on limited compute, we utilized the NVIDIA Tesla T4 not as a server requirement, but as a hardware proxy to simulate the estimated compute capability of a flagship mobile NPU in 2030.
+To address the challenge's requirement for a mobile-first editor operating on limited compute, we utilized the NVIDIA Tesla T4 not as a server requirement, but as a hardware to simulate the estimated compute capability of a flagship mobile NPU in 2030.
 
 *Based on our technical research and projection models*:
 
 
-- Current State (2024): Flagship mobile NPUs (e.g., Snapdragon 8s Gen 3) average ~45 TOPS.
+- Current State (2024): Flagship mobile NPUs (e.g., Snapdragon 8s Gen 3 average ~45 TOPS & Snapdragon 8 Elite ~55 TOPS).
 
-- The 2030 Projection: Scaling laws suggest 2030 mobile NPUs will reach 100-120 TOPS.
+- The 2030 Projection: Scaling laws suggest 2030 mobile NPUs will reach 120-130 TOPS.
 
-- The Hardware Proxy: The NVIDIA Tesla T4 provides approximately 65 TOPS (Int8) and 8.1 TFLOPS (FP32).
+- The Hardware: The NVIDIA Tesla T4 provides approximately 130 TOPS (Int8) and 65 TFLOPS (Mixed).
 
 *Conclusion*: By optimizing Stable Diffusion XL (SDXL) to run locally on a T4, we demonstrate a workload that is mathematically feasible on a 2030 edge device without reliance on cloud inference, adhering to the challenge's low-latency (<10s) and privacy requirements.
 
-For  our mathematical model, kindly read - [Documentation](Documentation.md)
+For  our mathematical model, kindly read - [Documentation](Documentation.md#mathematical-modelling-the-2030-compute)
 
 ## Core Optimizations (Lightweight Architecture)
 We implement a "Software-First" optimization strategy to fit foundation models into constrained mobile environments (approx. 16-24GB Unified RAM projected for 2030 flagships).
@@ -51,18 +51,18 @@ We implement a "Software-First" optimization strategy to fit foundation models i
 1. 4-bit NF4 Quantization
 Technique: We utilize Normal Float 4 (NF4) quantization via bitsandbytes.
 
-- Impact: Compresses the SDXL UNet and Text Encoders from ~20GB (FP32) to ~7-8GB. This aligns with the projected "Available RAM for AI" on 2030 mobile devices, leaving room for the OS and other applications.
+- Impact: mpact: This reduces SDXL weights significantly compared to FP32/FP16, enabling multi-GB scale diffusion models to be more feasible to be loaded in RAM (VRAM in our hardware case) for edge devices. Such reduction trends align with expected increases in mobile RAM capacity by 2030, improving deployability alongside system tasks.
 
 
 2. Token Merging (ToMe)
-Technique: Dynamic structural pruning applied to the attention mechanism with a ratio of 0.4.
+Technique: Dynamic structural pruning applied to the attention mechanism with a ratio of 0.15.
 
-- Impact: Removes 40% of redundant tokens during the forward pass. This directly translates to reduced FLOPs per inference step, minimizing battery drain and thermal throttling on mobile hardware.
+- Impact: Merges approximately 15% of similar tokens during inference, reducing attention FLOPs and accelerating forward pass latency. This reduction in compute helps lower power consumption and manage thermals on mobile-class devices..
 
 3. Precision Management
 Technique: FP16 VAE with Sliced Decoding.
 
-- Impact: Prevents memory spikes during the final image decode step, a critical bottleneck for high-resolution mobile editing.
+- Impact: Reduces peak memory usage during the final image decoding stage, mitigating one of the main RAM bottlenecks when generating high-resolution outputs on mobile hardware..
 
 ### Features & Workflows
 1. Smart Fill (Generative Fill)
@@ -70,7 +70,7 @@ Technique: FP16 VAE with Sliced Decoding.
 
 - Function: Fills masked areas based on text prompts.
 
-- Mobile-First Design: Uses a "Vibe Match" pass (Img2Img) to ensure photometric consistency without requiring heavy, manual post-processing layers.
+- Mobile-First Design: Uses an optional "Vibe Match" pass (Img2Img) to ensure photometric consistency without requiring heavy, manual post-processing layers.
 
 2. Harmonization (Sticker Blending)
 - Algorithm: Edge-aware inpainting on 768x768 crops.
@@ -93,11 +93,11 @@ This project utilizes a Training-Free approach. It leverages pre-trained weights
 - Inference data: Accepts standard image formats (JPG, PNG) and binary masks.
 
 ## The Tesla T4
-To address the challenge's requirement for a lightweight, mobile-first editor, we utilized the NVIDIA Tesla T4 as a hardware proxy for the estimated compute capability of a flagship mobile NPU in 2030
+To address the challenge's requirement for a lightweight, mobile-first editor, we utilized the NVIDIA Tesla T4 as a hardware for the estimated compute capability of a flagship mobile NPU in 2030
 
 - **Current State (2024)**: High-end mobile NPUs (e.g., A17 Pro, Snapdragon 8 Gen 3) reach ~35-45 TOPS (Trillions of Operations Per Second)
 
-- **The 2030 Projection**: Extrapolating current NPU efficiency gains, mobile edge devices in 2030 are projected to exceed 100+ TOPS, rivaling the inference throughput of today's mid-range inference cards like the T4 (~65 TOPS Int8 / ~8 TFLOPS FP32)
+- **The 2030 Projection**: Extrapolating current NPU efficiency gains, mobile edge devices in 2030 are projected to exceed 100+ TOPS, rivaling the inference throughput of today's mid-range inference cards like the T4 (~130 TOPS Int8 / ~65 TFLOPS Mixed)
 
 - **Our Approach**: By optimizing Stable Diffusion XL (SDXL) with 4-bit Quantization and Token Merging, we demonstrate that high-fidelity generative editing can run locally on this "2030-equivalent" compute profile without cloud dependency.
 
@@ -151,15 +151,13 @@ curl -X POST "http://localhost:8080/harmonize" \
 - **run_smart_fill**: Orchestrates the generation process using ControlNet and SDXL.
 - **run_harmonize_sticker**: Handles bounding box extraction and edge-focused inpainting for faster processing (768x768 crop).
 3. **quantization_utils.py**: Contains the BitsAndBytesConfig setup. It configures the model to load in 4-bit NF4 (Normal Float 4) precision with double quantization, drastically reducing the memory footprint of the SDXL UNet and Text Encoders.
-4. **pruning_utils.py**: Implements Token Merging (ToMe). This applies dynamic structural pruning to the attention mechanism, removing approximately 40% of redundant tokens during the forward pass to speed up inference.
+4. **pruning_utils.py**: Implements Token Merging (ToMe). This applies dynamic structural pruning to the attention mechanism, removing approximately 15% of redundant tokens during the forward pass to speed up inference.
 ## Optimizations
 To ensure low-latency inference on consumer GPUs (e.g., Tesla T4), several critical optimizations were implemented:
 - **4-bit Quantization (NF4)**: The heavy SDXL UNet and Text Encoders are loaded in 4-bit precision using bitsandbytes, keeping VRAM usage low (~7-8GB for the model weights).
-- **Token Pruning (ToMe)**: Utilizing tomesd, we prune 40% of the attention tokens (ratio=0.4). This acts as dynamic structural pruning, increasing throughput without retraining.
+- **Token Pruning (ToMe)**: Utilizing tomesd, we prune 15% of the attention tokens (ratio=0.15). This acts as dynamic structural pruning, increasing throughput without retraining.
 - **FP16 VAE**: Uses madebyollin/sdxl-vae-fp16-fix to avoid numerical instability (NaNs) common in standard SDXL VAEs when running in half-precision.
 - **Sliced VAE Decoding**: Enabled via vae.enable_slicing() to decode large images in chunks, preventing OOM errors during the final decoding stage.
-## Compute Profiles
-### Hardware Environment: NVIDIA Tesla T4 (16GB VRAM)
 
 # Compute Performance Analysis: Harmonization vs. Generative Fill
 
@@ -191,14 +189,14 @@ This document compares the computational characteristics of **Harmonization** (B
 
 ## 2. Workload Profiles
 
-### Generative Fill: "The Furnace"
+### Generative Fill:
 * **Behavior:** This process acts as a stress test. It grabs every available resource and holds it until completion. It pins the GPU at 100% utilization and immediately hits the **70W Enforced Power Limit**.
 * **Throttling:** Because it hits the power wall so hard, the GPU is forced to downclock (thermal/power throttle) from 1580 MHz to as low as 900 MHz to survive the workload.
 * **Bottlenecks:**
     * **Power Bound:** Hard cap at 70W.
     * **Memory Bandwidth Bound:** It spends 45% of its time accessing memory.
 
-### Harmonization: "The Sprinter"
+### Harmonization:
 * **Behavior:** This process works in short, intense bursts (spikes). It utilizes the GPU in pulses but allows it to rest and cool down in between.
 * **Efficiency:** It is thermally efficient, peaking at only 34°C (vs 42°C for Gen Fill).
 * **Bottlenecks:**
@@ -222,7 +220,7 @@ This document compares the computational characteristics of **Harmonization** (B
 ### Resource Analysis Summary
 Real-time resource monitoring (RAM, VRAM, TFLOPS) is built into the pipeline and logged via Weights & Biases.
 
-- Latency: ~10-15s (Harmonization) / ~30s (Gen Fill) on T4 Proxy.
+- Latency: ~10-15s (Harmonization) / ~30s (Gen Fill) on T4.
 
 - VRAM Footprint: Peaks at ~9GB (fitting comfortably within the 12GB+ standard of 2030 mobile hardware).
 
