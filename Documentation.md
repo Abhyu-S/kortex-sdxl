@@ -9,6 +9,7 @@ The system assembles SDXL components with an fp16 VAE and applies aggressive but
 ## Table of Contents
 - [Overview](#overview)
 - [Architecture](#architecture)
+- [Benchmark Results: Kortex vs. SDXL-InstructPix2Pix](#benchmark-results-kortex-vs-sdxl-instructpix2pix)
 - [Mathematical Computations](#mathematical-computations)
 - [Performance Analysis](#performance-analysis)
 - [Deployment Guide](#deployment-guide)
@@ -196,7 +197,7 @@ flowchart TB
 
 ## Benchmark Results: Kortex vs. SDXL-InstructPix2Pix
 
-The following table compares the performance of **Kortex (Ours)** against the baseline **SDXL-InstructPix2Pix** on the `fusing/instructpix2pix-1000-samples` dataset.
+The following table compares the performance of **Kortex (Ours)** against the baseline **SDXL-InstructPix2Pix** on the `fusing/instructpix2pix-1000-samples` [link](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) dataset.
 
 ### Key Observations:
 * **Precision**: Kortex (via Smart Fill) strictly adheres to the input mask, resulting in near-zero L1/L2 error for unedited regions (backgrounds). In contrast, the baseline InstructPix2Pix model often "hallucinates" global changes (e.g., lighting shifts, texture bleeding) even when the instruction targets a specific object.
