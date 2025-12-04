@@ -64,6 +64,8 @@ Technique: FP16 VAE with Sliced Decoding.
 
 - Impact: Reduces peak memory usage during the final image decoding stage, mitigating one of the main RAM bottlenecks when generating high-resolution outputs on mobile hardware..
 
+Model benchmarking - [Benchmarks](Documentation.md#benchmark-results-kortex-vs-sdxl-instructpix2pix)
+
 ### Features & Workflows
 1. Smart Fill (Generative Fill)
 - Algorithm: SDXL + ControlNet-Inpaint-Dreamer.
