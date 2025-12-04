@@ -194,6 +194,30 @@ flowchart TB
 
 ---
 
+## Benchmark Results: Kortex vs. SDXL-InstructPix2Pix
+
+The following table compares the performance of **Kortex (Ours)** against the baseline **SDXL-InstructPix2Pix** on the `fusing/instructpix2pix-1000-samples` dataset.
+
+### Key Observations:
+* **Precision**: Kortex (via Smart Fill) strictly adheres to the input mask, resulting in near-zero L1/L2 error for unedited regions (backgrounds). In contrast, the baseline InstructPix2Pix model often "hallucinates" global changes (e.g., lighting shifts, texture bleeding) even when the instruction targets a specific object.
+* **Fidelity**: By leveraging the SDXL backbone with NF4 quantization, Kortex maintains higher textural fidelity for object swaps compared to the baseline.
+
+---
+
+### Quantitative Benchmark Results
+
+| Metric | Kortex (NF4+ToMe) | SDXL-InstructPix2Pix |
+| :--- | :--- | :--- |
+| **CLIP Score**  | **27.3156** | 25.5384 |
+| **L1 Error**  | **0.1971** | 0.2700 |
+| **L2 Error**  | **0.0616** | 0.1086 |
+---
+
+| Reference Image | Instruction | SDXL-InstructPix2Pix (Baseline) | Kortex (Ours) |
+| :--- | :--- | :--- | :--- |
+| ![Ref](assets/benchmark_0_ref.png) | **"have the cubs be koalas"** | ![IP2P](assets/benchmark_0_ip2p.png) | ![Kortex](assets/benchmark_0_kortex.png) |
+| ![Ref](assets/benchmark_1_ref.png) | **"By Andy Warhol"** [his work](https://www.google.com/search?sca_esv=8cf1f9704eb8c240&rlz=1C1CHBD_enIN1113IN1131&sxsrf=AE3TifPz7E9OS1QKCV5qqFcL4pZs8aeftA:1764851549273&udm=2&fbs=AIIjpHxU7SXXniUZfeShr2fp4giZ1Y6MJ25_tmWITc7uy4KIeioyp3OhN11EY0n5qfq-zEMZldv_eRjZ2XLYc5GnVnME7glWodDcaQwvGYJtospyF4hao4VocMoniUVvlzzwRcB_gh46MHhrDPH5NOVwPivjadeakFm05zxnpGxC0pvMBL6-v6zKyyE5nBk0bvDg1EPDxHf7xVk4s29Sxnujftn4liXpkA&q=andy+warhol+art&sa=X&ved=2ahUKEwiT3rOt-KORAxXhRWcHHeqFHXwQtKgLegQIDBAB) | ![IP2P](assets/benchmark_1_ip2p.png) | ![Kortex](assets/benchmark_1_kortex.png) |
+| ![Ref](assets/benchmark_2_ref.png) | **"have it be in the middle of a forest"** | ![IP2P](assets/benchmark_2_ip2p.png) | ![Kortex](assets/benchmark_2_kortex.png) |
 
 ## Mathematical Computations
 - Diffusion: UNet predicts noise residuals per step; scheduler updates latent $z_t \to z_{t-1}$.
