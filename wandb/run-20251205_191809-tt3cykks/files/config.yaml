@@ -1,0 +1,66 @@
+_wandb:
+    value:
+        cli_version: 0.23.1
+        e:
+            5lmxe99ntkzfq1nqcq7cbqx1dxa16y7f:
+                codePath: benchmark.py
+                codePathLocal: benchmark.py
+                cpu_count: 8
+                cpu_count_logical: 16
+                cudaVersion: "12.8"
+                disk:
+                    /:
+                        total: "589427720192"
+                        used: "113523339264"
+                email: abhyudaya410@gmail.com
+                executable: /home/zeus/miniconda3/envs/cloudspace/bin/python
+                git:
+                    commit: 9ac81060571e3e81810ebf93cdc88b63ba8aaee4
+                    remote: https://github.com/Abhyu-S/kortex-sdxl
+                gpu: NVIDIA L40S
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ada
+                      cudaCores: 18176
+                      memoryTotal: "48305799168"
+                      name: NVIDIA L40S
+                      uuid: GPU-0a641ae7-c6ae-0d98-af65-09e0c71e91a4
+                host: ip-10-192-12-20
+                memory:
+                    total: "133269876736"
+                os: Linux-6.8.0-1024-aws-x86_64-with-glibc2.39
+                program: /teamspace/studios/this_studio/kortex-sdxl/benchmark.py
+                python: CPython 3.12.11
+                root: /teamspace/studios/this_studio/kortex-sdxl
+                startedAt: "2025-12-05T19:18:09.257934Z"
+                writerId: 5lmxe99ntkzfq1nqcq7cbqx1dxa16y7f
+        m: []
+        python_version: 3.12.11
+        t:
+            "1":
+                - 1
+                - 5
+                - 11
+                - 41
+                - 49
+                - 51
+                - 53
+                - 71
+                - 83
+            "2":
+                - 1
+                - 5
+                - 11
+                - 41
+                - 49
+                - 51
+                - 53
+                - 71
+                - 83
+            "3":
+                - 13
+            "4": 3.12.11
+            "5": 0.23.1
+            "6": 4.57.3
+            "12": 0.23.1
+            "13": linux-x86_64

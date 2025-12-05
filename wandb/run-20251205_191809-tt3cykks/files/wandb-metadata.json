@@ -1,0 +1,40 @@
+{
+  "os":  "Linux-6.8.0-1024-aws-x86_64-with-glibc2.39",
+  "python":  "CPython 3.12.11",
+  "startedAt":  "2025-12-05T19:18:09.257934Z",
+  "program":  "/teamspace/studios/this_studio/kortex-sdxl/benchmark.py",
+  "codePath":  "benchmark.py",
+  "codePathLocal":  "benchmark.py",
+  "git":  {
+    "remote":  "https://github.com/Abhyu-S/kortex-sdxl",
+    "commit":  "9ac81060571e3e81810ebf93cdc88b63ba8aaee4"
+  },
+  "email":  "abhyudaya410@gmail.com",
+  "root":  "/teamspace/studios/this_studio/kortex-sdxl",
+  "host":  "ip-10-192-12-20",
+  "executable":  "/home/zeus/miniconda3/envs/cloudspace/bin/python",
+  "cpu_count":  8,
+  "cpu_count_logical":  16,
+  "gpu":  "NVIDIA L40S",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "589427720192",
+      "used":  "113523339264"
+    }
+  },
+  "memory":  {
+    "total":  "133269876736"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA L40S",
+      "memoryTotal":  "48305799168",
+      "cudaCores":  18176,
+      "architecture":  "Ada",
+      "uuid":  "GPU-0a641ae7-c6ae-0d98-af65-09e0c71e91a4"
+    }
+  ],
+  "cudaVersion":  "12.8",
+  "writerId":  "5lmxe99ntkzfq1nqcq7cbqx1dxa16y7f"
+}

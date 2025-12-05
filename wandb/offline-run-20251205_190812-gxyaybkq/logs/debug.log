@@ -1,0 +1,23 @@
+2025-12-05 19:08:12,201 INFO    MainThread:12800 [wandb_setup.py:_flush():80] Current SDK version is 0.23.1
+2025-12-05 19:08:12,201 INFO    MainThread:12800 [wandb_setup.py:_flush():80] Configure stats pid to 12800
+2025-12-05 19:08:12,202 INFO    MainThread:12800 [wandb_setup.py:_flush():80] Loading settings from /teamspace/studios/this_studio/.config/wandb/settings
+2025-12-05 19:08:12,202 INFO    MainThread:12800 [wandb_setup.py:_flush():80] Loading settings from /teamspace/studios/this_studio/kortex-sdxl/wandb/settings
+2025-12-05 19:08:12,202 INFO    MainThread:12800 [wandb_setup.py:_flush():80] Loading settings from environment variables
+2025-12-05 19:08:12,202 INFO    MainThread:12800 [wandb_init.py:setup_run_log_directory():714] Logging user logs to /teamspace/studios/this_studio/kortex-sdxl/wandb/offline-run-20251205_190812-gxyaybkq/logs/debug.log
+2025-12-05 19:08:12,202 INFO    MainThread:12800 [wandb_init.py:setup_run_log_directory():715] Logging internal logs to /teamspace/studios/this_studio/kortex-sdxl/wandb/offline-run-20251205_190812-gxyaybkq/logs/debug-internal.log
+2025-12-05 19:08:12,202 INFO    MainThread:12800 [wandb_init.py:init():841] calling init triggers
+2025-12-05 19:08:12,202 INFO    MainThread:12800 [wandb_init.py:init():846] wandb.init called with sweep_config: {}
+config: {'_wandb': {}}
+2025-12-05 19:08:12,202 INFO    MainThread:12800 [wandb_init.py:init():889] starting backend
+2025-12-05 19:08:12,732 INFO    MainThread:12800 [wandb_init.py:init():892] sending inform_init request
+2025-12-05 19:08:12,741 INFO    MainThread:12800 [wandb_init.py:init():900] backend started and connected
+2025-12-05 19:08:12,745 INFO    MainThread:12800 [wandb_init.py:init():970] updated telemetry
+2025-12-05 19:08:12,758 INFO    MainThread:12800 [wandb_init.py:init():994] communicating run to backend with 90.0 second timeout
+2025-12-05 19:08:12,926 INFO    MainThread:12800 [wandb_init.py:init():1041] starting run threads in backend
+2025-12-05 19:08:13,165 INFO    MainThread:12800 [wandb_run.py:_console_start():2521] atexit reg
+2025-12-05 19:08:13,165 INFO    MainThread:12800 [wandb_run.py:_redirect():2369] redirect: wrap_raw
+2025-12-05 19:08:13,165 INFO    MainThread:12800 [wandb_run.py:_redirect():2438] Wrapping output streams.
+2025-12-05 19:08:13,165 INFO    MainThread:12800 [wandb_run.py:_redirect():2461] Redirects installed.
+2025-12-05 19:08:13,168 INFO    MainThread:12800 [wandb_init.py:init():1081] run started, returning control to user process
+2025-12-05 19:17:01,807 INFO    wandb-AsyncioManager-main:12800 [service_client.py:_forward_responses():80] Reached EOF.
+2025-12-05 19:17:01,808 INFO    wandb-AsyncioManager-main:12800 [mailbox.py:close():137] Closing mailbox, abandoning 0 handles.

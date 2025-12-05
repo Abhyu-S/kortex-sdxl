@@ -5,6 +5,7 @@ from PIL import Image, ImageChops, ImageFilter
 from diffusers import (
     StableDiffusionXLControlNetInpaintPipeline,
     StableDiffusionXLImg2ImgPipeline,
+    StableDiffusionXLInpaintPipeline,
     ControlNetModel,
     EulerDiscreteScheduler,
     UNet2DConditionModel,
@@ -37,6 +38,7 @@ except ImportError:
 
 # Model IDs
 BASE_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
+REFINER_MODEL = "stabilityai/stable-diffusion-xl-refiner-1.0"
 CONTROLNET_MODEL = "destitech/controlnet-inpaint-dreamer-sdxl"
 VAE_MODEL = "madebyollin/sdxl-vae-fp16-fix"
 
@@ -105,12 +107,18 @@ class EditingPipelines:
             torch_dtype=torch.float16,
             use_safetensors=True
         )
-        controlnet.to(self.device)
 
-        # --- MANUAL LOADING WITH QUANTIZATION ---
-        print("... Loading SDXL Components with 4-bit (NF4)")
+        # 3. Load VAE (FP16) - Shared between Base and Refiner
+        print("... Loading Shared VAE (FP16)")
+        vae = AutoencoderKL.from_pretrained(
+            VAE_MODEL,
+            torch_dtype=torch.float16
+        )
+        vae.enable_slicing()
 
-        # Load UNet with Quantization
+        # --- MANUAL LOADING BASE MODEL WITH QUANTIZATION ---
+        print("... Loading Base SDXL Components with 4-bit (NF4)")
+
         unet = UNet2DConditionModel.from_pretrained(
             BASE_MODEL,
             subfolder="unet",
@@ -119,7 +127,6 @@ class EditingPipelines:
             variant="fp16"
         )
 
-        # Load Text Encoders with Quantization
         text_encoder_1 = CLIPTextModel.from_pretrained(
             BASE_MODEL,
             subfolder="text_encoder",
@@ -134,31 +141,12 @@ class EditingPipelines:
             torch_dtype=torch.float16,
             variant="fp16"
         )
+        
+        tokenizer_1 = AutoTokenizer.from_pretrained(BASE_MODEL, subfolder="tokenizer", use_fast=False)
+        tokenizer_2 = AutoTokenizer.from_pretrained(BASE_MODEL, subfolder="tokenizer_2", use_fast=False)
 
-        # Load VAE (FP16)
-        vae = AutoencoderKL.from_pretrained(
-            VAE_MODEL,
-            torch_dtype=torch.float16
-        )
-        vae.to(self.device)
-        vae.enable_slicing() # fits in the VRAM
-
-        # Load Tokenizers
-        print("... Loading Tokenizers")
-        tokenizer_1 = AutoTokenizer.from_pretrained(
-            BASE_MODEL,
-            subfolder="tokenizer",
-            use_fast=False
-        )
-        tokenizer_2 = AutoTokenizer.from_pretrained(
-            BASE_MODEL,
-            subfolder="tokenizer_2",
-            use_fast=False
-        )
-        # --- END MANUAL LOADING ---
-
-        # 3. Assemble Main Pipeline
-        print("... Assembling StableDiffusionXLControlNetInpaintPipeline")
+        # Assemble Base Pipeline
+        print("... Assembling Base Pipeline")
         self.inpaint_pipe = StableDiffusionXLControlNetInpaintPipeline(
             vae=vae,
             text_encoder=text_encoder_1,
@@ -169,16 +157,59 @@ class EditingPipelines:
             tokenizer_2=tokenizer_2,
             scheduler=EulerDiscreteScheduler.from_pretrained(BASE_MODEL, subfolder="scheduler"),
         )
-        
         self.inpaint_pipe.scheduler = EulerDiscreteScheduler.from_config(
-            self.inpaint_pipe.scheduler.config, 
-            timestep_spacing="trailing"
+            self.inpaint_pipe.scheduler.config, timestep_spacing="trailing"
         )
-
-        # 4. PRUNING: Reduced ratio for better quality
+        
+        # Apply Pruning to Base
         apply_token_pruning(self.inpaint_pipe, ratio=0.15)
 
-        # 5. Assemble Img2Img Pipeline
+        # --- MANUAL LOADING REFINER MODEL WITH QUANTIZATION ---
+        print("... Loading Refiner SDXL Components with 4-bit (NF4)")
+        
+        refiner_unet = UNet2DConditionModel.from_pretrained(
+            REFINER_MODEL,
+            subfolder="unet",
+            quantization_config=quant_config,
+            torch_dtype=torch.float16,
+            variant="fp16"
+        )
+
+        # Refiner only uses text_encoder_2 (OpenCLIP)
+        refiner_text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(
+            REFINER_MODEL,
+            subfolder="text_encoder_2",
+            quantization_config=quant_config,
+            torch_dtype=torch.float16,
+            variant="fp16"
+        )
+        refiner_tokenizer_2 = AutoTokenizer.from_pretrained(REFINER_MODEL, subfolder="tokenizer_2", use_fast=False)
+
+        print("... Assembling Refiner Pipeline")
+        self.refiner_pipe = StableDiffusionXLInpaintPipeline(
+            vae=vae, # Reuse base VAE
+            text_encoder=None,
+            text_encoder_2=refiner_text_encoder_2,
+            unet=refiner_unet,
+            tokenizer=None,
+            tokenizer_2=refiner_tokenizer_2,
+            scheduler=EulerDiscreteScheduler.from_pretrained(REFINER_MODEL, subfolder="scheduler"),
+        )
+        # FIX: Force disable aesthetic score to prevent embedding size mismatch (2816 vs 2560)
+        self.refiner_pipe.register_to_config(requires_aesthetics_score=True)
+        
+        self.refiner_pipe.scheduler = EulerDiscreteScheduler.from_config(
+            self.refiner_pipe.scheduler.config, timestep_spacing="trailing"
+        )
+        
+        # Apply Pruning to Refiner
+        apply_token_pruning(self.refiner_pipe, ratio=0.15)
+        
+        # Ensure everything is on device
+        self.inpaint_pipe.to(self.device)
+        self.refiner_pipe.to(self.device)
+
+        # 5. Assemble Img2Img Pipeline (Reusable components)
         print("... Assembling Img2Img Pipeline")
         self.img2img_pipe = StableDiffusionXLImg2ImgPipeline(
             vae=vae,
@@ -187,14 +218,10 @@ class EditingPipelines:
             unet=unet,
             tokenizer=tokenizer_1,
             tokenizer_2=tokenizer_2,
-            scheduler=EulerDiscreteScheduler.from_pretrained(BASE_MODEL, subfolder="scheduler"),
-        )
-        self.img2img_pipe.scheduler = EulerDiscreteScheduler.from_config(
-            self.img2img_pipe.scheduler.config, 
-            timestep_spacing="trailing"
+            scheduler=self.inpaint_pipe.scheduler,
         )
 
-        print("--- Optimization Complete: 4-bit | 15% Pruned | 10 Steps ---")
+        print("--- Optimization Complete: Base + Refiner (4-bit | 15% Pruned) ---")
 
     def _get_gpu_util(self):
         """Helper to get GPU Utilization from pynvml"""
@@ -206,14 +233,11 @@ class EditingPipelines:
         return 0
 
     def _log_metrics(self, start_time, steps, step_name="Inference"):
-        """
-        Kept for console output.
-        Real logging is now handled by WandB logic in individual methods.
-        """
         if self.device == "cuda":
             torch.cuda.synchronize()
             latency = time.time() - start_time
             max_mem = torch.cuda.max_memory_allocated() / 1024**3
+            # Approx TFLOPs calculation
             estimated_ops_per_step = 5.0 
             total_ops = estimated_ops_per_step * steps
             throughput_tflops = total_ops / latency
@@ -227,11 +251,10 @@ class EditingPipelines:
             latency = time.time() - start_time
             print(f"[{step_name}] Latency: {latency:.4f}s (CPU)")
 
-    def run_smart_fill(self, image, mask, prompt, vibe_strength=0):
-        print(f"Running Smart Fill: '{prompt}'")
+    def run_smart_fill(self, image, mask, prompt, vibe_strength=0, use_refiner=True):
+        print(f"Running Smart Fill: '{prompt}' (Refiner: {use_refiner})")
         w, h = image.size
         
-        # Start Background Monitor
         monitor = ResourceMonitor()
         monitor.start()
         t0 = time.time()
@@ -243,33 +266,66 @@ class EditingPipelines:
             work_image = image.convert("RGB").resize((1024, 1024), Image.Resampling.LANCZOS)
             work_mask = mask.convert("L").resize((1024, 1024), Image.Resampling.NEAREST)
             
-            # --- Step 1: Generative Fill ---
-            print("  > Starting Generative Fill (30 Steps)...")
+            # --- Step 1: Generative Fill (Base Model) ---
+            print("  > Starting Generative Fill (Base)...")
             if self.device == "cuda": torch.cuda.reset_peak_memory_stats()
             
-            steps_1 = 30
-            filled_image = self.inpaint_pipe(
+            base_steps = 40 # Increased slightly for better base structure
+            high_noise_frac = 0.8 # Stop at 80% if refining
+            
+            # If using refiner, we output latents and stop early (denoising_end)
+            # If NOT using refiner, we run to completion.
+            denoising_end = high_noise_frac if use_refiner else 1.0
+            output_type = "latent" if use_refiner else "pil"
+            
+            base_output = self.inpaint_pipe(
                 prompt=f"{prompt}, 8k, photorealistic, master calibration",
                 negative_prompt="blurry, ugly, deformed, text, watermark, low quality",
                 image=work_image,
                 mask_image=work_mask,
                 control_image=work_image,
-                num_inference_steps=steps_1,  
+                num_inference_steps=base_steps,  
                 guidance_scale=7.5,
                 strength=1.0,
-                controlnet_conditioning_scale=0.5
-            ).images[0]
+                controlnet_conditioning_scale=0.5,
+                denoising_end=denoising_end,
+                output_type=output_type
+            )
             
-            total_steps_executed += steps_1
-            self._log_metrics(t0, steps=steps_1, step_name="Generative Fill")
-            
-            # --- Step 2: Vibe Match ---
+            # Record Base Steps
+            steps_run_base = int(base_steps * denoising_end)
+            total_steps_executed += steps_run_base
+            self._log_metrics(t0, steps=steps_run_base, step_name="Base Fill")
+
+            if use_refiner:
+                # --- Step 1.5: Refiner (Ensemble of Experts) ---
+                print("  > Starting Refiner...")
+                latents = base_output.images # These are tensors
+                
+                # Refiner needs the 'image' argument to be the latents from the base
+                refiner_output = self.refiner_pipe(
+                    prompt=f"{prompt}, 8k, photorealistic, master calibration",
+                    negative_prompt="blurry, ugly, deformed, text, watermark, low quality",
+                    image=latents, # Pass latents here
+                    mask_image=work_mask, # Keep mask constraint
+                    num_inference_steps=base_steps,
+                    denoising_start=high_noise_frac,
+                    guidance_scale=7.5,
+                    strength=1.0 # Strength is ignored when passing latents, but implies 100% of remaining steps
+                ).images[0]
+                
+                filled_image = refiner_output
+                
+                steps_run_refiner = base_steps - steps_run_base
+                total_steps_executed += steps_run_refiner
+                self._log_metrics(time.time(), steps=steps_run_refiner, step_name="Refiner")
+            else:
+                filled_image = base_output.images[0]
+
+            # --- Step 2: Vibe Match (Optional) ---
             if vibe_strength > 0:
                 print(f"  > Starting Vibe Match (Strength: {vibe_strength})...")
                 safe_steps = max(30, int(1.0 / vibe_strength) + 1)
-                
-                # We calculate approx steps that run based on strength
-                # img2img runs for (strength * num_inference_steps)
                 actual_steps_2 = int(safe_steps * vibe_strength)
                 
                 filled_image = self.img2img_pipe(
@@ -285,39 +341,30 @@ class EditingPipelines:
                 self._log_metrics(time.time(), steps=actual_steps_2, step_name="Vibe Match")
 
         finally:
-            # Stop Monitor & Collect Metrics
             monitor.stop()
             
-            # 1. Resource Metrics
             ram_start, ram_peak, ram_avg, cpu_avg = monitor.get_stats()
             latency = time.time() - t0
             gpu_mem = torch.cuda.max_memory_allocated() / (1024**3) if torch.cuda.is_available() else 0
             gpu_util = self._get_gpu_util()
             
-            # 2. Compute Estimation (TFLOPS)
-            # Formula: 2 * Params * Steps * ResolutionFactor
-            MODEL_PARAMS = 2.6e9  # Placeholder: Approx SDXL UNet params
-            res_factor = (1024 * 1024) / (1024 * 1024) # Processing done at 1024px
-            
+            MODEL_PARAMS = 2.6e9
+            res_factor = (1024 * 1024) / (1024 * 1024)
             estimated_tflops = (2 * MODEL_PARAMS * total_steps_executed * res_factor) / 1e12
 
-            # 3. Log to WandB
             if wandb:
                 wandb.log({
                     "request_type": "smart_fill",
                     "prompt": prompt,
                     "latency_s": latency,
                     "total_steps": total_steps_executed,
-                    
-                    # Resources
+                    "use_refiner": use_refiner,
                     "ram_start_gb": ram_start,
                     "ram_peak_gb": ram_peak,
                     "ram_avg_gb": ram_avg,
                     "cpu_usage_avg_percent": cpu_avg,
                     "gpu_mem_peak_gb": gpu_mem,
                     "gpu_util_percent": gpu_util,
-                    
-                    # Compute
                     "estimated_tflops_total": estimated_tflops,
                     "estimated_tflops_per_sec": estimated_tflops / latency if latency > 0 else 0
                 })
@@ -325,53 +372,39 @@ class EditingPipelines:
         return filled_image.resize((w, h), Image.Resampling.LANCZOS)
 
     def run_harmonize_sticker(self, image: Image.Image, mask: Image.Image) -> Image.Image:
-        print("-> Running Edge-Only Harmonization (Optimized Pre-processing)")
+        # Harmonization uses Base pipeline only (structure is already there, just blending edges)
         
-        # 1. Start Background Monitor
+        print("-> Running Edge-Only Harmonization (Optimized Pre-processing)")
         monitor = ResourceMonitor()
         monitor.start()
         t0 = time.time()
         
-        # Optimization Parameters
         process_size = (768, 768)
         total_steps = 15
         
-        # CLEANUP: Force garbage collection before heavy work to prevent "subsequent" slowdowns
         import gc
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        final_image = image # Default return if bbox fails
-        
-        # Hardcoded prompt used for logging consistency
+        final_image = image 
         prompt_used = "seamless blending, smooth edges, anti-aliased, coherent lighting, realistic shadows, high quality"
 
         try:
             width, height = image.size
             border_width = 41
-            
-            # BBox calculation
             analysis_scale = 1024 / max(width, height)
             
             if analysis_scale < 1.0:
-                # Resize mask for analysis
                 w_small = int(width * analysis_scale)
                 h_small = int(height * analysis_scale)
                 mask_small = mask.resize((w_small, h_small), Image.Resampling.NEAREST)
                 
-                # Calculate scaled border
                 scaled_border = int(border_width * analysis_scale)
+                if scaled_border < 3: border_small = 3
+                elif scaled_border % 2 == 0: border_small = scaled_border + 1
+                else: border_small = scaled_border
                 
-                # Ensure it is at least 3 and always ODD
-                if scaled_border < 3:
-                    border_small = 3
-                elif scaled_border % 2 == 0:
-                    border_small = scaled_border + 1 # Turn 10 into 11
-                else:
-                    border_small = scaled_border
-                
-                # Fast Filter on small mask
                 mask_dilated_small = mask_small.filter(ImageFilter.MaxFilter(border_small))
                 bbox_small = mask_dilated_small.getbbox()
                 
@@ -379,7 +412,6 @@ class EditingPipelines:
                     print("No bbox found in mask")
                     return image
 
-                # Scale BBox back up
                 bbox = (
                     int(bbox_small[0] / analysis_scale),
                     int(bbox_small[1] / analysis_scale),
@@ -387,14 +419,11 @@ class EditingPipelines:
                     int(bbox_small[3] / analysis_scale)
                 )
             else:
-                # Image is already small, run normally
-                # Ensure original border_width is odd (41 is odd, so this is safe)
                 safe_border = border_width if border_width % 2 != 0 else border_width + 1
                 mask_dilated = mask.filter(ImageFilter.MaxFilter(safe_border))
                 bbox = mask_dilated.getbbox()
                 if not bbox: return image
 
-        
             padding = 128
             crop_box = (
                 max(0, bbox[0]-padding), 
@@ -403,26 +432,21 @@ class EditingPipelines:
                 min(height, bbox[3]+padding)
             )
             
-            # Now we crop the ORIGINAL high-res image and mask
             image_crop = image.crop(crop_box)
             mask_crop = mask.crop(crop_box)
             
-            # Now we perform the expensive filters ONLY on the cropped area (much smaller)
-            # We must re-calculate dilated/eroded on the crop to get the edge mask
             mask_dilated_crop = mask_crop.filter(ImageFilter.MaxFilter(border_width))
             mask_eroded_crop = mask_crop.filter(ImageFilter.MinFilter(border_width))
             
-            # Smooth alpha transitions
             edge_mask = ImageChops.difference(mask_dilated_crop, mask_eroded_crop).filter(ImageFilter.GaussianBlur(20))
             
-            # Resize for Inference
             work_image = image_crop.convert("RGB").resize(process_size, Image.Resampling.LANCZOS)
             work_mask = edge_mask.convert("L").resize(process_size, Image.Resampling.NEAREST)
             original_crop_size = image_crop.size
 
-            # --- Run Inference ---
             if self.device == "cuda": torch.cuda.reset_peak_memory_stats()
 
+            # Harmonization pipeline call
             output_crop = self.inpaint_pipe(
                 prompt=prompt_used,
                 negative_prompt="jagged, zig-zag, pixelated, blurry, artificial, visible seam, cut out, glowing edge",
@@ -435,7 +459,6 @@ class EditingPipelines:
                 controlnet_conditioning_scale=0.4
             ).images[0]
             
-            # Console logging
             self._log_metrics(t0, steps=total_steps, step_name="Harmonization")
             
             output_crop = output_crop.resize(original_crop_size, Image.Resampling.LANCZOS)
@@ -444,8 +467,6 @@ class EditingPipelines:
             
         finally:
             monitor.stop()
-            
-            # Logging logic remains the same...
             ram_start, ram_peak, ram_avg, cpu_avg = monitor.get_stats()
             latency = time.time() - t0
             gpu_mem = torch.cuda.max_memory_allocated() / (1024**3) if torch.cuda.is_available() else 0
@@ -461,20 +482,14 @@ class EditingPipelines:
                     "prompt": prompt_used,
                     "latency_s": latency,
                     "total_steps": total_steps,
-                    
-                    # Resources
                     "ram_start_gb": ram_start,
                     "ram_peak_gb": ram_peak,
                     "ram_avg_gb": ram_avg,
                     "cpu_usage_avg_percent": cpu_avg,
                     "gpu_mem_peak_gb": gpu_mem,
                     "gpu_util_percent": gpu_util,
-                    
-                    # Compute
                     "estimated_tflops_total": estimated_tflops,
                     "estimated_tflops_per_sec": estimated_tflops / latency if latency > 0 else 0,
-                    
-                    # Extra info specific to harmonization
                     "resolution": f"{process_size[0]}x{process_size[1]}"
                 })
         
