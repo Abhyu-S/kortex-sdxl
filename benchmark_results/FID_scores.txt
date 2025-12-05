@@ -1,0 +1,5 @@
+Kortex SDXL - 115.8294
+Ip2p - 193.4221
+realvis_4 = 146.1342
+Juggernaut_XL - 149.9384
+ThinkDiffusion_XL 148.3831
