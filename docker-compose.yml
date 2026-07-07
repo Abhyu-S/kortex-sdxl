@@ -1,0 +1,87 @@
+version: "3.9"
+
+services:
+
+  # ── Redis: Celery Broker & Result Backend ──
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── PostgreSQL: Persistent Task State ──
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kortex
+      POSTGRES_PASSWORD: kortex_secret
+      POSTGRES_DB: kortex_tasks
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kortex -d kortex_tasks"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── FastAPI: REST API Layer ──
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8080 --workers 1
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql://kortex:kortex_secret@db:5432/kortex_tasks
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    volumes:
+      - generated_images:/data/generated
+
+  # ── Celery Worker: ML Task Execution ──
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      celery -A worker.celery_app worker --loglevel=info --pool=solo --concurrency=1
+    environment:
+      DATABASE_URL: postgresql://kortex:kortex_secret@db:5432/kortex_tasks
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    volumes:
+      - generated_images:/data/generated
+      - model_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  redis_data:
+  pg_data:
+  generated_images:
+  model_cache:
