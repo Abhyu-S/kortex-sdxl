@@ -1,14 +1,24 @@
-torch
-torchvision
-transformers
-diffusers
-accelerate
-safetensors
-fastapi
-uvicorn
-python-multipart
-Pillow
-bitsandbytes
-scipy
-tomesd
-wandb
+# === API Layer ===
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# === Task Queue ===
+celery[redis]>=5.4.0
+redis>=5.0.0
+
+# === Database ===
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.30
+
+# === ML Engine ===
+torch>=2.3.0
+diffusers>=0.30.0
+accelerate>=0.33.0
+transformers>=4.44.0
+safetensors>=0.4.0
+huggingface-hub>=0.24.0
+peft>=0.12.0
+
+# === Image Handling ===
+Pillow>=10.0.0
